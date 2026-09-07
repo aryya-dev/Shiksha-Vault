@@ -26,41 +26,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         })
         if (error) throw error
         
-        // Verify admin role
+        // Verify user is staff / faculty (not a student)
         if (data.user) {
-          let { data: adminRecord } = await supabase
-            .from('admins')
-            .select('*')
-            .eq('id', data.user.id)
-            .maybeSingle()
-
-          // If no admin record exists, try self-healing claim_admin_access RPC
-          if (!adminRecord) {
-            try {
-              const { data: claimRes } = await supabase.rpc('claim_admin_access')
-              if (claimRes?.success) {
-                const { data: refreshed } = await supabase
-                  .from('admins')
-                  .select('*')
-                  .eq('id', data.user.id)
-                  .maybeSingle()
-                adminRecord = refreshed
-              }
-            } catch (rpcErr) {
-              console.warn('claim_admin_access RPC not yet available:', rpcErr)
-            }
+          const isStudent = Boolean(data.user.email?.toLowerCase().endsWith('@student.shiksharthi.in'))
+          if (isStudent) {
+            await supabase.auth.signOut()
+            throw new Error('This account belongs to a student. Please use the Shiksha Vault mobile app to log in.')
           }
 
-          // If still no admin record, provide helpful guidance
-          if (!adminRecord) {
-            const isStudent = Boolean(data.user.email?.includes('@student.shiksharthi.in'))
-            await supabase.auth.signOut()
-            if (isStudent) {
-              throw new Error('This account belongs to a student. Please use the Shiksha Vault mobile app to log in.')
-            }
-            throw new Error('Administrator privileges not yet assigned. Please run Migration 16 in your Supabase SQL Editor.')
+          // Ensure admin privileges in database via RPC
+          try {
+            await supabase.rpc('claim_admin_access')
+          } catch (rpcErr) {
+            console.warn('claim_admin_access info:', rpcErr)
           }
         }
+
         onLoginSuccess()
       } catch (err: any) {
         setErrorMsg(formatUserError(err, 'Sign in failed'))

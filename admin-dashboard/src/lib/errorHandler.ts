@@ -58,6 +58,9 @@ export function formatUserError(err: any, context?: string): string {
   else if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
     friendly = 'Incorrect email or password. Please verify and try again.'
   }
+  else if (msg.includes('email not confirmed')) {
+    friendly = 'This email address is not yet confirmed. Please verify your email or confirm it in your Supabase Auth dashboard.'
+  }
 
   // 8. Rate limits
   else if (msg.includes('rate limit') || msg.includes('too many requests')) {
@@ -69,8 +72,8 @@ export function formatUserError(err: any, context?: string): string {
     friendly = 'Unable to read the CSV file. Please ensure columns match: FullName, StudentCode, Email, Phone.'
   }
 
-  // 10. Fallback: if message is already short and human-readable (no SQL/JSON syntax), use it
-  else if (rawMsg.length < 80 && !rawMsg.includes('{') && !rawMsg.includes('PGRST') && !rawMsg.includes('SELECT')) {
+  // 10. Fallback: if message is already clean and human-readable (no SQL/JSON syntax), use it directly
+  else if (!rawMsg.includes('{') && !rawMsg.includes('PGRST') && !rawMsg.includes('SELECT') && !rawMsg.includes('table "')) {
     friendly = rawMsg
   } else {
     friendly = 'Could not complete this action. Please check your details and try again.'
