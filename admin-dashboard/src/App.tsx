@@ -9,7 +9,8 @@ import { AuthPage } from './pages/AuthPage'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 export function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [loading, setLoading] = useState<boolean>(true)
   const [activeTab, setActiveTab] = useState<TabType>('students')
   const [configured, setConfigured] = useState<boolean>(false)
 
@@ -18,15 +19,37 @@ export function App() {
     setConfigured(Boolean(isConf))
 
     if (isConf) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setIsAuthenticated(!!session)
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
+        if (session?.user) {
+          try {
+            const { data: adminRecord } = await supabase
+              .from('admins')
+              .select('id')
+              .eq('id', session.user.id)
+              .maybeSingle()
+
+            if (!adminRecord) {
+              await supabase.rpc('claim_admin_access')
+            }
+            setIsAuthenticated(true)
+          } catch {
+            setIsAuthenticated(true)
+          }
+        } else {
+          setIsAuthenticated(false)
+        }
+        setLoading(false)
       })
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setIsAuthenticated(!!session)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_OUT' || !session) {
+          setIsAuthenticated(false)
+        }
       })
 
       return () => subscription.unsubscribe()
+    } else {
+      setLoading(false)
     }
   }, [])
 
@@ -35,6 +58,22 @@ export function App() {
       await supabase.auth.signOut()
     }
     setIsAuthenticated(false)
+  }
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: 'var(--bg-page)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'var(--text-muted)',
+        fontSize: '14px'
+      }}>
+        Loading Shiksha Vault...
+      </div>
+    )
   }
 
   if (!isAuthenticated) {
