@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+*/node_modules/
+.pub-cache/
+.pub/
+
+# Production & Build outputs
+dist/
+*/dist/
+build/
+*/build/
+.dart_tool/
+*/.dart_tool/
+.flutter-plugins-dependencies
+.flutter-plugins
+
+# Gradle & Android builds
+.gradle/
+*/.gradle/
+local.properties
+**/local.properties
+*.apk
+hs_err_pid*.log
+
+# Environment variables
+.env.local
+.env.*.local
+
+# IDE & OS files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db

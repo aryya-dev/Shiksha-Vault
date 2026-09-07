@@ -1,0 +1,180 @@
+:root {
+  --bg-page: #0E0E10;
+  --surface-card: #1A1A1D;
+  --surface-raised: #222226;
+  --surface-hover: #28282D;
+  --border: #2E2E32;
+  --border-strong: #3A3A3F;
+  --text-primary: #F5F4F0;
+  --text-secondary: #A3A29C;
+  --text-muted: #6B6A65;
+  --accent-primary: #FFB300;
+  --accent-hover: #E6A100;
+  --accent-secondary: #FF6A1F;
+  --success: #2ECC71;
+  --danger: #FF4D4D;
+  --danger-hover: #E03E3E;
+
+  --subject-physics: #5B8DEF;
+  --subject-chemistry: #2FD4A5;
+  --subject-mathematics: #8B7CF6;
+  --subject-biology: #4CD97A;
+  --subject-cs: #FF6FA8;
+
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: 14px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-page);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Core utility classes */
+.btn-primary {
+  background-color: var(--accent-primary);
+  color: #0E0E10;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+}
+.btn-primary:active {
+  transform: translateY(1px);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: var(--surface-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.btn-secondary:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.btn-danger {
+  background-color: rgba(255, 77, 77, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(255, 77, 77, 0.3);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.btn-danger:hover {
+  background-color: rgba(255, 77, 77, 0.2);
+  border-color: var(--danger);
+}
+
+.card {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.input-field {
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s ease;
+}
+.input-field:focus {
+  border-color: var(--accent-primary);
+}
+
+.table-container {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.table-container th {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.table-container td {
+  padding: 14px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.table-container tr:hover td {
+  background-color: var(--surface-hover);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
