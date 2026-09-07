@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { 
   Users, 
   Layers, 
@@ -10,6 +10,7 @@ import {
   Download
 } from 'lucide-react'
 import { DownloadAppModal } from './DownloadAppModal'
+import { supabase } from '../lib/supabase'
 
 export type TabType = 'students' | 'batches' | 'content' | 'trash' | 'logs'
 
@@ -27,6 +28,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isConfigured
 }) => {
   const [showDownloadModal, setShowDownloadModal] = useState(false)
+  const [currentUser, setCurrentUser] = useState<{
+    name: string
+    email: string
+    role: string
+  }>({
+    name: 'Staff Admin',
+    email: 'admin@shiksharthi.in',
+    role: 'super_admin'
+  })
+
+  useEffect(() => {
+    if (!isConfigured) return
+
+    const loadProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const userEmail = user.email || ''
+          let userName = user.user_metadata?.full_name || userEmail.split('@')[0] || 'Staff Admin'
+          let userRole = 'super_admin'
+
+          // Fetch name and role from public.admins
+          const { data: adminRecord } = await supabase
+            .from('admins')
+            .select('full_name, role')
+            .eq('id', user.id)
+            .maybeSingle()
+
+          if (adminRecord?.full_name) {
+            userName = adminRecord.full_name
+          }
+          if (adminRecord?.role) {
+            userRole = adminRecord.role
+          }
+
+          setCurrentUser({
+            name: userName,
+            email: userEmail,
+            role: userRole
+          })
+        }
+      } catch (err) {
+        console.warn('Could not load current admin profile:', err)
+      }
+    }
+
+    loadProfile()
+  }, [isConfigured])
 
   const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'students', label: 'Students Roster', icon: <Users size={18} /> },
@@ -209,15 +258,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer Profile & Sign Out */}
       <div style={{
-        padding: '16px 20px',
+        padding: '14px 16px',
         borderTop: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        gap: '10px'
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>Staff Admin</span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>admin@shiksharthi.in</span>
+        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span 
+              title={currentUser.name}
+              style={{ 
+                fontSize: '13px', 
+                fontWeight: 600, 
+                color: 'var(--text-primary)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
+              {currentUser.name}
+            </span>
+            <span style={{
+              fontSize: '9px',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              padding: '1px 5px',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(255, 179, 0, 0.15)',
+              color: 'var(--accent-primary)',
+              letterSpacing: '0.04em',
+              flexShrink: 0
+            }}>
+              {currentUser.role.replace('_', ' ')}
+            </span>
+          </div>
+          <span 
+            title={currentUser.email}
+            style={{ 
+              fontSize: '11px', 
+              color: 'var(--text-muted)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              marginTop: '1px'
+            }}
+          >
+            {currentUser.email}
+          </span>
         </div>
         <button
           onClick={onSignOut}
