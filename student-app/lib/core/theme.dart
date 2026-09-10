@@ -28,9 +28,11 @@ class AppColors {
   static const Color subjectMathematics = Color(0xFF8B7CF6);
   static const Color subjectBiology = Color(0xFF4CD97A);
   static const Color subjectComputerScience = Color(0xFFFF6FA8);
+  static const Color subjectFoundation = Color(0xFFFF9F1C);
 
   static Color getSubjectColor(String slug) {
     final s = slug.toLowerCase().trim();
+    if (s.contains('foundat')) return subjectFoundation;
     if (s.contains('physic')) return subjectPhysics;
     if (s.contains('chemist')) return subjectChemistry;
     if (s.contains('math')) return subjectMathematics;
@@ -39,6 +41,7 @@ class AppColors {
     return accentPrimary;
   }
 }
+
 
 class AppTheme {
   static ThemeData get darkTheme {

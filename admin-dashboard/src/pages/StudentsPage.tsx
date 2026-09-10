@@ -10,7 +10,9 @@ import {
   FileSpreadsheet, 
   Download, 
   Trash2,
-  Users
+  Users,
+  Copy,
+  CheckCheck
 } from 'lucide-react'
 import Papa from 'papaparse'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -49,6 +51,13 @@ export const StudentsPage: React.FC = () => {
   const [csvData, setCsvData] = useState<any[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Password Reset Modal State
+  const [resetModalStudent, setResetModalStudent] = useState<Student | null>(null)
+  const [resetPasswordInput, setResetPasswordInput] = useState('Shiksha@123')
+  const [isResetting, setIsResetting] = useState(false)
+  const [resetSuccessData, setResetSuccessData] = useState<{ studentCode: string; newPassword: string } | null>(null)
+  const [copiedPassword, setCopiedPassword] = useState(false)
 
   // Add Student Form State
   const [formCode, setFormCode] = useState('')
@@ -133,8 +142,49 @@ export const StudentsPage: React.FC = () => {
     }
   }
 
-  const handleResetPassword = (code: string) => {
-    alert(`Temporary one-time password generated for ${code}: SH@${Math.floor(1000 + Math.random() * 9000)}. Hand this code to student.`)
+  const openResetModal = (student: Student) => {
+    setResetModalStudent(student)
+    setResetPasswordInput('Shiksha@123')
+    setResetSuccessData(null)
+    setCopiedPassword(false)
+  }
+
+  const handleExecuteReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!resetModalStudent) return
+    const newPass = resetPasswordInput.trim()
+    if (newPass.length < 6) {
+      alert('Password must be at least 6 characters long.')
+      return
+    }
+
+    setIsResetting(true)
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase.rpc('admin_reset_student_password', {
+          p_student_id: resetModalStudent.id,
+          p_new_password: newPass
+        })
+
+        if (error) throw error
+      }
+
+      setResetSuccessData({
+        studentCode: resetModalStudent.student_code,
+        newPassword: newPass
+      })
+      await fetchStudents()
+    } catch (err: any) {
+      alert(formatUserError(err, 'Failed to reset student password'))
+    } finally {
+      setIsResetting(false)
+    }
+  }
+
+  const handleCopyPassword = (pwd: string) => {
+    navigator.clipboard.writeText(pwd)
+    setCopiedPassword(true)
+    setTimeout(() => setCopiedPassword(false), 2500)
   }
 
   const handleAddStudent = async (e: React.FormEvent) => {
@@ -644,7 +694,7 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
                         <button
-                          onClick={() => handleResetPassword(st.student_code)}
+                          onClick={() => openResetModal(st)}
                           title="Reset Password"
                           className="btn-secondary"
                           style={{ padding: '6px 8px', fontSize: '12px' }}
@@ -932,6 +982,141 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
           </div>
         </div>
       )}
+
+      {/* Real Password Reset Modal */}
+      {resetModalStudent && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div className="card" style={{ width: '460px', backgroundColor: 'var(--surface-raised)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(255, 179, 0, 0.15)',
+                  color: 'var(--accent-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <KeyRound size={20} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '17px', fontWeight: 600 }}>Reset Student Password</h3>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  {resetModalStudent.full_name} ({resetModalStudent.student_code})
+                </div>
+              </div>
+            </div>
+
+            {resetSuccessData ? (
+              <div>
+                <div
+                  style={{
+                    backgroundColor: 'rgba(46, 204, 113, 0.12)',
+                    border: '1px solid rgba(46, 204, 113, 0.3)',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginBottom: '20px'
+                  }}
+                >
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--success)', marginBottom: '6px' }}>
+                    Password Successfully Reset!
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-primary)', marginBottom: '12px' }}>
+                    Student <strong>{resetSuccessData.studentCode}</strong> can now log in using this password:
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: 'var(--surface-card)',
+                      padding: '10px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border)'
+                    }}
+                  >
+                    <code style={{ fontSize: '15px', fontWeight: 600, color: 'var(--accent-primary)', letterSpacing: '0.05em' }}>
+                      {resetSuccessData.newPassword}
+                    </code>
+                    <button
+                      className="btn-secondary"
+                      style={{ padding: '6px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => handleCopyPassword(resetSuccessData.newPassword)}
+                    >
+                      {copiedPassword ? <CheckCheck size={14} style={{ color: 'var(--success)' }} /> : <Copy size={14} />}
+                      {copiedPassword ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '10px' }}>
+                    * The student will be prompted to create their own new password upon login.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button className="btn-primary" onClick={() => setResetModalStudent(null)}>
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleExecuteReset} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Enter a temporary password for this student. The default institute password is{' '}
+                  <code style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>Shiksha@123</code>.
+                </p>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      New Temporary Password
+                    </label>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={() => setResetPasswordInput('Shiksha@123')}
+                    >
+                      Use Default (Shiksha@123)
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={resetPasswordInput}
+                    onChange={(e) => setResetPasswordInput(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                  <button type="button" className="btn-secondary" onClick={() => setResetModalStudent(null)} disabled={isResetting}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary" disabled={isResetting}>
+                    {isResetting ? 'Resetting...' : 'Confirm Reset Password'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
