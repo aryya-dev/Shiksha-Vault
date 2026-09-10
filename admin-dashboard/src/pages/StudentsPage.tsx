@@ -104,11 +104,14 @@ export const StudentsPage: React.FC = () => {
       )
       setSubjects(validSubjects)
 
-      const { data: stData, error } = await supabase
+      let stData: any[] | null = null
+
+      // Disambiguate batches foreign key using batches!students_batch_id_fkey
+      const fullRes = await supabase
         .from('students')
         .select(`
           *,
-          batches (*),
+          batches:batches!students_batch_id_fkey (*),
           student_batches (
             batch_id,
             batches (*)
@@ -120,7 +123,41 @@ export const StudentsPage: React.FC = () => {
         `)
         .order('student_code', { ascending: true })
 
-      if (error) throw error
+      if (!fullRes.error) {
+        stData = fullRes.data
+      } else {
+        console.warn('Full student join query failed, falling back to base join:', fullRes.error)
+        const fallbackRes = await supabase
+          .from('students')
+          .select(`
+            *,
+            batches:batches!students_batch_id_fkey (*),
+            student_subjects (
+              subject_id,
+              subjects (*)
+            )
+          `)
+          .order('student_code', { ascending: true })
+
+        if (fallbackRes.error) {
+          console.warn('Fallback join failed, using direct students select with in-memory batch mapping:', fallbackRes.error)
+          const simpleRes = await supabase
+            .from('students')
+            .select('*')
+            .order('student_code', { ascending: true })
+
+          if (simpleRes.error) throw simpleRes.error
+
+          const batchMap = new Map((bData || []).map((b) => [b.id, b]))
+          stData = (simpleRes.data || []).map((st) => ({
+            ...st,
+            batches: st.batch_id ? batchMap.get(st.batch_id) : undefined
+          }))
+        } else {
+          stData = fallbackRes.data
+        }
+      }
+
       setStudents((stData as any) || [])
     } catch (err) {
       console.error('Error fetching students:', err)
