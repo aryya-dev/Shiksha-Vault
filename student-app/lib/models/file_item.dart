@@ -5,6 +5,7 @@ class FileItemModel {
   final String storagePath;
   final int version;
   final int? fileSizeBytes;
+  final String fileType;
   final DateTime uploadedAt;
   final bool isDeleted;
 
@@ -15,6 +16,7 @@ class FileItemModel {
     required this.storagePath,
     required this.version,
     this.fileSizeBytes,
+    this.fileType = 'application/pdf',
     required this.uploadedAt,
     this.isDeleted = false,
   });
@@ -27,6 +29,7 @@ class FileItemModel {
       storagePath: json['storage_path'] as String,
       version: (json['version'] as num?)?.toInt() ?? 1,
       fileSizeBytes: (json['file_size_bytes'] as num?)?.toInt(),
+      fileType: json['file_type'] as String? ?? 'application/pdf',
       uploadedAt: json['uploaded_at'] != null 
           ? DateTime.parse(json['uploaded_at'] as String) 
           : DateTime.now(),
@@ -34,3 +37,4 @@ class FileItemModel {
     );
   }
 }
+

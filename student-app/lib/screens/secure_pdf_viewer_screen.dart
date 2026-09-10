@@ -136,12 +136,23 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
     }
   }
 
+  bool get _isImageFile {
+
+    final type = widget.file.fileType.toLowerCase();
+    final name = widget.file.name.toLowerCase();
+    return type.startsWith('image/') ||
+        name.endsWith('.png') ||
+        name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.webp') ||
+        name.endsWith('.gif');
+  }
+
   @override
   Widget build(BuildContext context) {
     final studentName = widget.studentProfile?.fullName ?? 'Enrolled Student';
     final studentCode = widget.studentProfile?.studentCode ?? 'SHIKSHA-STUDENT';
     final timestamp = DateFormat('dd MMM yyyy HH:mm').format(DateTime.now());
-    final watermarkText = '$studentName  •  $studentCode  •  $timestamp';
 
     return Scaffold(
       backgroundColor: AppColors.bgPage,
@@ -154,7 +165,7 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
-          if (_totalPages > 0)
+          if (!_isImageFile && _totalPages > 0)
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(right: 16.0),
@@ -171,8 +182,9 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
         ],
       ),
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // PDF Rendering Body
+          // 1. Content Rendering Body (PDF or Image)
           if (_isLoading)
             const Center(
               child: Column(
@@ -181,7 +193,7 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
                   CircularProgressIndicator(color: AppColors.accentPrimary),
                   SizedBox(height: 16),
                   Text(
-                    'Loading document securely...',
+                    'Loading material securely...',
                     style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
                   ),
                 ],
@@ -243,33 +255,93 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
               ),
             )
           else if (_pdfBytes != null)
-            PDFView(
-              pdfData: _pdfBytes,
-              enableSwipe: true,
-              swipeHorizontal: false,
-              autoSpacing: true,
-              pageFling: true,
-              onRender: (pages) {
-                setState(() => _totalPages = pages ?? 0);
-              },
-              onPageChanged: (page, total) {
-                setState(() {
-                  _currentPage = page ?? 0;
-                  _totalPages = total ?? 0;
-                });
-              },
-            ),
+            _isImageFile
+                ? InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Center(
+                      child: Image.memory(
+                        _pdfBytes!,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  )
+                : PDFView(
+                    pdfData: _pdfBytes,
+                    enableSwipe: true,
+                    swipeHorizontal: false,
+                    autoSpacing: true,
+                    pageFling: true,
+                    onRender: (pages) {
+                      setState(() => _totalPages = pages ?? 0);
+                    },
+                    onPageChanged: (page, total) {
+                      setState(() {
+                        _currentPage = page ?? 0;
+                        _totalPages = total ?? 0;
+                      });
+                    },
+                  ),
 
-          // Dynamic Semi-Transparent Traceable Watermark Overlay
-          IgnorePointer(
-            child: SizedBox.expand(
+          // 2. High-Contrast Tiled Diagonal Watermark Overlay (Rendered directly on top)
+          Positioned.fill(
+            child: IgnorePointer(
               child: CustomPaint(
-                painter: WatermarkPainter(watermarkText: watermarkText),
+                painter: WatermarkPainter(
+                  studentName: studentName,
+                  studentCode: studentCode,
+                  timestamp: timestamp,
+                ),
               ),
             ),
           ),
 
-          // iOS Screen recording protection blur / blackout overlay
+          // 3. Floating Bottom Security Pill (Permanent visual proof of protection)
+          Positioned(
+            bottom: 20,
+            left: 24,
+            right: 24,
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xDD0E0E10),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.18)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.shield_outlined, color: AppColors.accentPrimary, size: 14),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          '$studentName • $studentCode',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.3,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 4. Screen recording blackout overlay
           if (_isScreenRecording)
             Container(
               color: Colors.black,
@@ -286,35 +358,89 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
   }
 }
 
-/// Custom painter for repetitive diagonal tiled watermark
+/// Custom painter for dense, high-contrast diagonal tiled watermark
 class WatermarkPainter extends CustomPainter {
-  final String watermarkText;
+  final String studentName;
+  final String studentCode;
+  final String timestamp;
 
-  WatermarkPainter({required this.watermarkText});
+  WatermarkPainter({
+    required this.studentName,
+    required this.studentCode,
+    required this.timestamp,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    const double stepX = 260;
-    const double stepY = 160;
+    const double stepX = 230;
+    const double stepY = 150;
 
-    final textStyle = TextStyle(
-      color: Colors.white.withOpacity(0.08), // Subtle, visible on dark / white pages
-      fontSize: 12,
-      fontWeight: FontWeight.w500,
-      letterSpacing: 0.5,
+    // High-contrast dual-tone text: Dark slate foreground + subtle light halo shadow
+    // Guarantees prominent legibility on white textbook pages, dark diagrams, and scans
+    final primaryStyle = TextStyle(
+      color: const Color(0xFF0F172A).withOpacity(0.18),
+      fontSize: 12.5,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.4,
+      height: 1.3,
+      shadows: [
+        Shadow(
+          color: Colors.white.withOpacity(0.75),
+          offset: const Offset(1, 1),
+          blurRadius: 1.5,
+        ),
+      ],
     );
 
-    final textSpan = TextSpan(text: watermarkText, style: textStyle);
+    final secondaryStyle = TextStyle(
+      color: const Color(0xFF1E293B).withOpacity(0.16),
+      fontSize: 10.5,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.3,
+      height: 1.3,
+      shadows: [
+        Shadow(
+          color: Colors.white.withOpacity(0.7),
+          offset: const Offset(1, 1),
+          blurRadius: 1.0,
+        ),
+      ],
+    );
+
+    final securityBadgeStyle = TextStyle(
+      color: const Color(0xFFE11D48).withOpacity(0.16), // Security red
+      fontSize: 9.0,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0.8,
+      height: 1.3,
+      shadows: [
+        Shadow(
+          color: Colors.white.withOpacity(0.6),
+          offset: const Offset(1, 1),
+          blurRadius: 1.0,
+        ),
+      ],
+    );
+
+    final textSpan = TextSpan(
+      children: [
+        TextSpan(text: '$studentName\n', style: primaryStyle),
+        TextSpan(text: '$studentCode • $timestamp\n', style: secondaryStyle),
+        TextSpan(text: 'SHIKSHA VAULT • CONFIDENTIAL', style: securityBadgeStyle),
+      ],
+    );
+
     final textPainter = TextPainter(
       text: textSpan,
+      textAlign: TextAlign.center,
       textDirection: ui.TextDirection.ltr,
     )..layout();
 
-    for (double x = -100; x < size.width + 100; x += stepX) {
-      for (double y = -50; y < size.height + 50; y += stepY) {
+    for (double x = -80; x < size.width + 120; x += stepX) {
+      for (double y = -60; y < size.height + 100; y += stepY) {
         canvas.save();
         canvas.translate(x, y);
-        canvas.rotate(-0.35); // Slight diagonal tilt
+        canvas.rotate(-0.35); // Diagonal tilt
         textPainter.paint(canvas, Offset.zero);
         canvas.restore();
       }
@@ -322,5 +448,10 @@ class WatermarkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant WatermarkPainter oldDelegate) {
+    return oldDelegate.studentName != studentName ||
+        oldDelegate.studentCode != studentCode ||
+        oldDelegate.timestamp != timestamp;
+  }
 }
+

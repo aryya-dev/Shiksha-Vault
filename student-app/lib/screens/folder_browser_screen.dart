@@ -222,36 +222,55 @@ class _FolderBrowserScreenState extends State<FolderBrowserScreen> {
                             ),
                           ),
                         ),
-                        ..._files.map((file) => Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                color: AppColors.surfaceCard,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: AppColors.border),
+                        ..._files.map((file) {
+                          final type = file.fileType.toLowerCase();
+                          final name = file.name.toLowerCase();
+
+                          IconData fileIcon = Icons.picture_as_pdf_rounded;
+                          Color fileColor = AppColors.danger;
+                          String formatLabel = 'PDF';
+
+                          if (type.startsWith('video/') || name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.mkv') || name.endsWith('.webm')) {
+                            fileIcon = Icons.play_circle_fill_rounded;
+                            fileColor = const Color(0xFFA855F7); // Purple
+                            formatLabel = 'Video';
+                          } else if (type.startsWith('image/') || name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp') || name.endsWith('.gif')) {
+                            fileIcon = Icons.image_rounded;
+                            fileColor = const Color(0xFF10B981); // Emerald Green
+                            formatLabel = 'Image';
+                          }
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceCard,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: ListTile(
+                              leading: Icon(fileIcon, color: fileColor, size: 22),
+                              title: Text(
+                                file.name,
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
                               ),
-                              child: ListTile(
-                                leading: const Icon(Icons.picture_as_pdf_rounded, color: AppColors.danger, size: 22),
-                                title: Text(
-                                  file.name,
-                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
-                                ),
-                                subtitle: Text(
-                                  'v${file.version} • ${_formatBytes(file.fileSizeBytes)}',
-                                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-                                ),
-                                trailing: const Icon(Icons.remove_red_eye_outlined, color: AppColors.accentPrimary, size: 18),
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => SecurePdfViewerScreen(
-                                        file: file,
-                                        studentProfile: widget.studentProfile,
-                                      ),
+                              subtitle: Text(
+                                '$formatLabel • v${file.version} • ${_formatBytes(file.fileSizeBytes)}',
+                                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                              ),
+                              trailing: const Icon(Icons.remove_red_eye_outlined, color: AppColors.accentPrimary, size: 18),
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => SecurePdfViewerScreen(
+                                      file: file,
+                                      studentProfile: widget.studentProfile,
                                     ),
-                                  );
-                                },
-                              ),
-                            )),
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        }),
                       ],
                     ],
                   ),
