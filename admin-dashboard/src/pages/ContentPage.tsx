@@ -3,14 +3,18 @@ import { Header } from '../components/Header'
 import { 
   Folder as FolderIcon, 
   FolderPlus, 
+  FolderOpen,
   FileText, 
   Upload, 
   ChevronRight, 
   ArrowUp, 
   ArrowDown, 
+  ArrowLeft,
   Trash2, 
   RefreshCw,
-  Layers
+  Layers,
+  Video,
+  Image as ImageIcon
 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatUserError } from '../lib/errorHandler'
@@ -101,7 +105,7 @@ export const ContentPage: React.FC = () => {
     loadDatabaseData()
   }, [])
 
-  // Filter folders: MUST match selectedBatch.id, selectedSubject.id, and parentFolderId
+  // Filter folders: MUST match selectedBatch.id, selectedSubject.id, and parent_folder_id = currentFolderId
   const currentFolders = folders.filter((f) => {
     if (!selectedBatch || !selectedSubject) return false
     const matchesBatch = f.batch_id === selectedBatch.id || (!f.batch_id && batches[0]?.id === selectedBatch.id)
@@ -116,8 +120,90 @@ export const ContentPage: React.FC = () => {
   )
 
   const activeFolder = folders.find((f) => f.id === currentFolderId)
+  const parentOfActiveFolder = activeFolder?.parent_folder_id 
+    ? folders.find((f) => f.id === activeFolder.parent_folder_id) 
+    : null
 
-  // Create folder inside current batch and subject
+  // Compute full recursive breadcrumb trail from root to currentFolderId
+  const getBreadcrumbPath = (): Folder[] => {
+    const path: Folder[] = []
+    let curr = folders.find((f) => f.id === currentFolderId)
+    while (curr) {
+      path.unshift(curr)
+      curr = folders.find((f) => f.id === curr?.parent_folder_id)
+    }
+    return path
+  }
+  const breadcrumbPath = getBreadcrumbPath()
+
+  // Derive MIME type safely
+  const deriveFileType = (file: File): string => {
+    if (file.type && file.type !== '') return file.type
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    switch (ext) {
+      case 'mp4': return 'video/mp4'
+      case 'mov': return 'video/quicktime'
+      case 'mkv': return 'video/x-matroska'
+      case 'webm': return 'video/webm'
+      case 'png': return 'image/png'
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg'
+      case 'webp': return 'image/webp'
+      case 'gif': return 'image/gif'
+      default: return 'application/pdf'
+    }
+  }
+
+  // File size formatter
+  const formatFileSize = (bytes: number | null | undefined): string => {
+    if (!bytes || bytes <= 0) return '—'
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  }
+
+  // Determine media icon, label, and style badge
+  const getFileBadge = (file: FileItem) => {
+    const type = (file.file_type || '').toLowerCase()
+    const name = file.name.toLowerCase()
+
+    if (type.startsWith('video/') || name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.mkv') || name.endsWith('.webm')) {
+      return {
+        icon: <Video size={16} style={{ color: '#A855F7', flexShrink: 0 }} />,
+        badgeText: 'MP4 VIDEO',
+        badgeStyle: {
+          backgroundColor: 'rgba(168, 85, 247, 0.12)',
+          color: '#C084FC',
+          border: '1px solid rgba(168, 85, 247, 0.3)'
+        }
+      }
+    }
+
+    if (type.startsWith('image/') || name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp') || name.endsWith('.gif')) {
+      return {
+        icon: <ImageIcon size={16} style={{ color: '#10B981', flexShrink: 0 }} />,
+        badgeText: 'IMAGE',
+        badgeStyle: {
+          backgroundColor: 'rgba(16, 185, 129, 0.12)',
+          color: '#34D399',
+          border: '1px solid rgba(16, 185, 129, 0.3)'
+        }
+      }
+    }
+
+    return {
+      icon: <FileText size={16} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />,
+      badgeText: 'PDF',
+      badgeStyle: {
+        backgroundColor: 'rgba(255, 179, 0, 0.1)',
+        color: 'var(--accent-primary)',
+        border: '1px solid rgba(255, 179, 0, 0.3)'
+      }
+    }
+  }
+
+  // Create folder inside current batch, subject, and currentFolderId
   const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newFolderName.trim() || !selectedBatch || !selectedSubject) return
@@ -164,7 +250,7 @@ export const ContentPage: React.FC = () => {
   }
 
   const handleSoftDeleteFolder = async (folderId: string) => {
-    if (!confirm('Are you sure you want to move this folder and its documents to trash?')) return
+    if (!confirm('Are you sure you want to move this folder, its subfolders, and all materials to trash?')) return
 
     try {
       if (isSupabaseConfigured()) {
@@ -175,7 +261,7 @@ export const ContentPage: React.FC = () => {
       setFolders(folders.filter((f) => f.id !== folderId))
       setFiles(files.filter((f) => f.folder_id !== folderId))
       if (currentFolderId === folderId) {
-        setCurrentFolderId(null)
+        setCurrentFolderId(activeFolder?.parent_folder_id || null)
       }
     } catch (err: any) {
       alert(formatUserError(err, 'Failed to move folder to trash'))
@@ -183,7 +269,7 @@ export const ContentPage: React.FC = () => {
   }
 
   const handleSoftDeleteFile = async (fileId: string) => {
-    if (!confirm('Are you sure you want to move this PDF to trash?')) return
+    if (!confirm('Are you sure you want to move this material to trash?')) return
 
     try {
       if (isSupabaseConfigured()) {
@@ -220,6 +306,7 @@ export const ContentPage: React.FC = () => {
     setFolders(updated)
   }
 
+  // Multi-format file upload (PDF, MP4, Images)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = e.target.files
     if (!uploadedFiles || uploadedFiles.length === 0 || !currentFolderId || !selectedBatch || !selectedSubject) return
@@ -230,17 +317,18 @@ export const ContentPage: React.FC = () => {
 
       for (let i = 0; i < uploadedFiles.length; i++) {
         const file = uploadedFiles[i]
+        const fileType = deriveFileType(file)
         const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const storagePath = `${selectedBatch.id}/${selectedSubject.slug}/${currentFolderId}/${Date.now()}-${sanitizedFileName}`
 
         if (isSupabaseConfigured()) {
-          // 1. Upload the physical binary PDF file to Supabase Storage 'course-materials'
+          // 1. Upload binary file to Supabase Storage 'course-materials'
           const { error: storageError } = await supabase.storage
             .from('course-materials')
             .upload(storagePath, file, {
               cacheControl: '3600',
               upsert: false,
-              contentType: file.type || 'application/pdf'
+              contentType: fileType
             })
 
           if (storageError) {
@@ -257,7 +345,7 @@ export const ContentPage: React.FC = () => {
               storage_path: storagePath,
               version: 1,
               file_size_bytes: file.size,
-              file_type: file.type || 'application/pdf',
+              file_type: fileType,
               is_deleted: false
             })
             .select()
@@ -274,7 +362,7 @@ export const ContentPage: React.FC = () => {
             version: 1,
             uploaded_by: null,
             file_size_bytes: file.size,
-            file_type: file.type || 'application/pdf',
+            file_type: fileType,
             uploaded_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             is_deleted: false
@@ -283,7 +371,7 @@ export const ContentPage: React.FC = () => {
       }
 
       setFiles((prev) => [...prev, ...newFiles])
-      alert(`Successfully uploaded ${newFiles.length} file(s) for batch: ${selectedBatch.name}.`)
+      alert(`Successfully uploaded ${newFiles.length} file(s) to "${activeFolder?.name}".`)
     } catch (err: any) {
       alert(formatUserError(err, 'Upload'))
     } finally {
@@ -301,6 +389,7 @@ export const ContentPage: React.FC = () => {
     setIsLoading(true)
     try {
       const bumpedVersion = replacingFile.version + 1
+      const fileType = deriveFileType(file)
       const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const storagePath = `${selectedBatch.id}/${selectedSubject.slug}/${replacingFile.folder_id}/${replacingFile.id}-v${bumpedVersion}-${sanitizedFileName}`
 
@@ -311,7 +400,7 @@ export const ContentPage: React.FC = () => {
           .upload(storagePath, file, {
             cacheControl: '3600',
             upsert: false,
-            contentType: file.type || 'application/pdf'
+            contentType: fileType
           })
 
         if (storageError) {
@@ -325,7 +414,7 @@ export const ContentPage: React.FC = () => {
             name: file.name,
             version: bumpedVersion,
             file_size_bytes: file.size,
-            file_type: file.type || 'application/pdf',
+            file_type: fileType,
             storage_path: storagePath,
             updated_at: new Date().toISOString()
           })
@@ -343,6 +432,7 @@ export const ContentPage: React.FC = () => {
           name: file.name,
           version: bumpedVersion,
           file_size_bytes: file.size,
+          file_type: fileType,
           storage_path: storagePath,
           updated_at: new Date().toISOString()
         }
@@ -367,7 +457,7 @@ export const ContentPage: React.FC = () => {
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <Header
           title="Content & Document Manager"
-          subtitle="Manage batch-specific folders, curriculum notes, and versioned PDF materials"
+          subtitle="Manage batch-specific folders, curriculum notes, videos, images, and versioned materials"
         />
         <div style={{ padding: '60px 32px', textAlign: 'center' }}>
           <div className="card" style={{ maxWidth: '480px', margin: '0 auto', padding: '36px' }}>
@@ -389,12 +479,16 @@ export const ContentPage: React.FC = () => {
     <div style={{ flex: 1, overflowY: 'auto' }}>
       <Header
         title="Content & Document Manager"
-        subtitle="Manage batch-specific folders, curriculum notes, and versioned PDF materials"
+        subtitle="Manage nested folders, PDFs, MP4 lecture videos, and images with batch protection"
         actions={
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button className="btn-secondary" onClick={() => setIsFolderModalOpen(true)} disabled={!selectedBatch || !selectedSubject}>
+            <button 
+              className="btn-secondary" 
+              onClick={() => setIsFolderModalOpen(true)} 
+              disabled={!selectedBatch || !selectedSubject}
+            >
               <FolderPlus size={16} />
-              New Folder
+              {currentFolderId ? '+ New Subfolder' : '+ New Folder'}
             </button>
             {currentFolderId && (
               <>
@@ -402,13 +496,13 @@ export const ContentPage: React.FC = () => {
                   type="file"
                   ref={uploadInputRef}
                   multiple
-                  accept="application/pdf"
+                  accept="application/pdf,video/mp4,video/quicktime,video/x-matroska,video/webm,image/png,image/jpeg,image/webp,image/gif"
                   style={{ display: 'none' }}
                   onChange={handleFileUpload}
                 />
                 <button className="btn-primary" onClick={() => uploadInputRef.current?.click()}>
                   <Upload size={16} />
-                  Upload PDFs
+                  Upload Materials
                 </button>
               </>
             )}
@@ -420,7 +514,7 @@ export const ContentPage: React.FC = () => {
       <input
         type="file"
         ref={replaceInputRef}
-        accept="application/pdf"
+        accept="application/pdf,video/mp4,video/quicktime,video/x-matroska,video/webm,image/png,image/jpeg,image/webp,image/gif"
         style={{ display: 'none' }}
         onChange={handleReplaceFileVersion}
       />
@@ -530,177 +624,311 @@ export const ContentPage: React.FC = () => {
           </div>
         )}
 
-        {/* 3. BREADCRUMBS */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+        {/* 3. MULTI-LEVEL BREADCRUMBS */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
           <span
             style={{ cursor: 'pointer', color: 'var(--accent-primary)', fontWeight: 600 }}
             onClick={() => setCurrentFolderId(null)}
           >
             {selectedBatch?.name || 'Batch'}
           </span>
-          <ChevronRight size={14} />
+          <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
           <span
-            style={{ cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}
+            style={{ cursor: 'pointer', color: currentFolderId === null ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: currentFolderId === null ? 600 : 400 }}
             onClick={() => setCurrentFolderId(null)}
           >
             {selectedSubject?.name || 'Subject'} Root
           </span>
-          {activeFolder && (
-            <>
-              <ChevronRight size={14} />
-              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{activeFolder.name}</span>
-            </>
-          )}
+          {breadcrumbPath.map((folder, idx) => {
+            const isLast = idx === breadcrumbPath.length - 1
+            return (
+              <React.Fragment key={folder.id}>
+                <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+                {isLast ? (
+                  <span style={{ 
+                    color: 'var(--text-primary)', 
+                    fontWeight: 600, 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    backgroundColor: 'var(--surface-raised)',
+                    padding: '2px 10px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <FolderOpen size={14} style={{ color: selectedSubject?.color || '#FFB300' }} />
+                    {folder.name}
+                  </span>
+                ) : (
+                  <span
+                    style={{ cursor: 'pointer', color: 'var(--accent-primary)', fontWeight: 500 }}
+                    onClick={() => setCurrentFolderId(folder.id)}
+                  >
+                    {folder.name}
+                  </span>
+                )}
+              </React.Fragment>
+            )
+          })}
         </div>
 
         {/* 4. CONTENT SECTIONS */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* FOLDERS GRID */}
+          
+          {/* FOLDER BANNER (When inside a folder) */}
+          {activeFolder && (
+            <div 
+              className="card" 
+              style={{ 
+                padding: '16px 20px', 
+                backgroundColor: 'var(--surface-raised)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '14px',
+                borderLeft: `4px solid ${selectedSubject?.color || '#FFB300'}`
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <button
+                  className="btn-secondary"
+                  style={{ padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => setCurrentFolderId(activeFolder.parent_folder_id || null)}
+                  title={parentOfActiveFolder ? `Up to ${parentOfActiveFolder.name}` : 'Up to Root'}
+                >
+                  <ArrowLeft size={14} />
+                  Up One Level
+                </button>
+                <div>
+                  <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FolderOpen size={18} style={{ color: selectedSubject?.color || '#FFB300' }} />
+                    {activeFolder.name}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Path: {breadcrumbPath.map((b) => b.name).join(' / ')}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button 
+                  className="btn-secondary" 
+                  onClick={() => setIsFolderModalOpen(true)}
+                  style={{ fontSize: '13px' }}
+                >
+                  <FolderPlus size={15} />
+                  + New Subfolder
+                </button>
+                <button 
+                  className="btn-primary" 
+                  onClick={() => uploadInputRef.current?.click()}
+                  style={{ fontSize: '13px' }}
+                >
+                  <Upload size={15} />
+                  Upload Materials
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* SUBFOLDERS / ROOT FOLDERS GRID */}
           <div>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px' }}>
-              FOLDERS ({currentFolders.length})
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.04em' }}>
+                {currentFolderId ? `SUBFOLDERS IN "${activeFolder?.name}"` : 'ROOT FOLDERS'} ({currentFolders.length})
+              </h3>
+              <button
+                className="btn-secondary"
+                style={{ padding: '4px 10px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => setIsFolderModalOpen(true)}
+              >
+                <FolderPlus size={13} />
+                {currentFolderId ? 'Add Subfolder' : 'Add Root Folder'}
+              </button>
+            </div>
+
             {currentFolders.length > 0 ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                {currentFolders.map((folder) => (
-                  <div
-                    key={folder.id}
-                    className="card"
-                    style={{
-                      padding: '16px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      cursor: 'pointer',
-                      borderLeft: `4px solid ${selectedSubject?.color || '#FFB300'}`
-                    }}
-                    onClick={() => setCurrentFolderId(folder.id)}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <FolderIcon size={20} style={{ color: selectedSubject?.color || '#FFB300' }} />
-                      <div>
-                        <div style={{ fontWeight: 500, fontSize: '14px' }}>{folder.name}</div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                          {files.filter((f) => f.folder_id === folder.id && !f.is_deleted).length} documents
+                {currentFolders.map((folder) => {
+                  const directFiles = files.filter((f) => f.folder_id === folder.id && !f.is_deleted).length
+                  const directSubfolders = folders.filter((f) => f.parent_folder_id === folder.id && !f.is_deleted).length
+
+                  return (
+                    <div
+                      key={folder.id}
+                      className="card"
+                      style={{
+                        padding: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        borderLeft: `4px solid ${selectedSubject?.color || '#FFB300'}`,
+                        transition: 'transform 0.15s ease, border-color 0.15s ease'
+                      }}
+                      onClick={() => setCurrentFolderId(folder.id)}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                        <FolderIcon size={22} style={{ color: selectedSubject?.color || '#FFB300', flexShrink: 0 }} />
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                          <div style={{ fontWeight: 500, fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {folder.name}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            {directFiles} file{directFiles !== 1 ? 's' : ''}
+                            {directSubfolders > 0 && ` • ${directSubfolders} subfolder${directSubfolders !== 1 ? 's' : ''}`}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Actions: Reorder & Delete */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: '4px' }}
-                        title="Move Up"
-                        onClick={() => handleReorderFolder(folder.id, 'up')}
-                      >
-                        <ArrowUp size={14} />
-                      </button>
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: '4px' }}
-                        title="Move Down"
-                        onClick={() => handleReorderFolder(folder.id, 'down')}
-                      >
-                        <ArrowDown size={14} />
-                      </button>
-                      <button
-                        className="btn-danger"
-                        style={{ padding: '4px' }}
-                        title="Delete Folder"
-                        onClick={() => handleSoftDeleteFolder(folder.id)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {/* Actions: Reorder & Delete */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px' }} onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '4px' }}
+                          title="Move Up"
+                          onClick={() => handleReorderFolder(folder.id, 'up')}
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '4px' }}
+                          title="Move Down"
+                          onClick={() => handleReorderFolder(folder.id, 'down')}
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                        <button
+                          className="btn-danger"
+                          style={{ padding: '4px' }}
+                          title="Delete Folder"
+                          onClick={() => handleSoftDeleteFolder(folder.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div
                 className="card"
                 style={{
-                  padding: '32px',
+                  padding: currentFolderId ? '24px' : '32px',
                   textAlign: 'center',
                   color: 'var(--text-muted)',
                   borderStyle: 'dashed'
                 }}
               >
-                No folders created in this subject for {selectedBatch?.name}. Click "New Folder" to create one.
+                {currentFolderId ? (
+                  <span>
+                    No subfolders created inside "{activeFolder?.name}". You can click "Add Subfolder" above, or upload documents and media directly below.
+                  </span>
+                ) : (
+                  <span>
+                    No root folders created for {selectedSubject?.name} in {selectedBatch?.name}. Click "Add Root Folder" to create one.
+                  </span>
+                )}
               </div>
             )}
           </div>
 
-          {/* FILES LIST (Shown when inside a folder) */}
+          {/* DOCUMENTS & MEDIA LIST (Shown when inside a folder) */}
           {currentFolderId && (
             <div>
-              <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                DOCUMENTS IN FOLDER ({currentFiles.length})
-              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.04em' }}>
+                  DOCUMENTS & MEDIA IN "{activeFolder?.name}" ({currentFiles.length})
+                </h3>
+                <button
+                  className="btn-primary"
+                  style={{ padding: '4px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => uploadInputRef.current?.click()}
+                >
+                  <Upload size={13} />
+                  Upload Materials
+                </button>
+              </div>
+
               {currentFiles.length > 0 ? (
                 <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                   <table className="table-container">
                     <thead>
                       <tr>
-                        <th style={{ width: '45%' }}>Document Name</th>
-                        <th style={{ width: '15%' }}>Version</th>
-                        <th style={{ width: '15%' }}>Size</th>
-                        <th style={{ width: '15%' }}>Uploaded</th>
+                        <th style={{ width: '40%' }}>Material Name</th>
+                        <th style={{ width: '15%' }}>Format</th>
+                        <th style={{ width: '10%' }}>Version</th>
+                        <th style={{ width: '15%' }}>File Size</th>
+                        <th style={{ width: '10%' }}>Uploaded</th>
                         <th style={{ width: '10%', textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {currentFiles.map((file) => (
-                        <tr key={file.id}>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <FileText size={16} style={{ color: 'var(--accent-primary)' }} />
-                              <span style={{ fontWeight: 500 }}>{file.name}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <span
-                              className="badge"
-                              style={{
-                                backgroundColor: 'rgba(255, 179, 0, 0.1)',
-                                color: 'var(--accent-primary)',
-                                border: '1px solid rgba(255, 179, 0, 0.3)'
-                              }}
-                            >
-                              v{file.version}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                            {file.file_size_bytes ? `${(file.file_size_bytes / (1024 * 1024)).toFixed(2)} MB` : '—'}
-                          </td>
-                          <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                            {new Date(file.uploaded_at).toLocaleDateString()}
-                          </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                              <button
-                                title="Replace with new version (bump version)"
-                                className="btn-secondary"
-                                style={{ padding: '6px 8px', fontSize: '12px' }}
-                                onClick={() => {
-                                  setReplacingFile(file)
-                                  replaceInputRef.current?.click()
+                      {currentFiles.map((file) => {
+                        const badgeInfo = getFileBadge(file)
+                        return (
+                          <tr key={file.id}>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                {badgeInfo.icon}
+                                <span style={{ fontWeight: 500 }}>{file.name}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <span
+                                className="badge"
+                                style={badgeInfo.badgeStyle}
+                              >
+                                {badgeInfo.badgeText}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                className="badge"
+                                style={{
+                                  backgroundColor: 'rgba(255, 179, 0, 0.1)',
+                                  color: 'var(--accent-primary)',
+                                  border: '1px solid rgba(255, 179, 0, 0.3)'
                                 }}
                               >
-                                <RefreshCw size={14} />
-                              </button>
-                              <button
-                                title="Delete Document"
-                                className="btn-danger"
-                                style={{ padding: '6px 8px', fontSize: '12px' }}
-                                onClick={() => handleSoftDeleteFile(file.id)}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                v{file.version}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                              {formatFileSize(file.file_size_bytes)}
+                            </td>
+                            <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                              {new Date(file.uploaded_at).toLocaleDateString()}
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                                <button
+                                  title="Replace with new version (bump version)"
+                                  className="btn-secondary"
+                                  style={{ padding: '6px 8px', fontSize: '12px' }}
+                                  onClick={() => {
+                                    setReplacingFile(file)
+                                    replaceInputRef.current?.click()
+                                  }}
+                                >
+                                  <RefreshCw size={14} />
+                                </button>
+                                <button
+                                  title="Delete Material"
+                                  className="btn-danger"
+                                  style={{ padding: '6px 8px', fontSize: '12px' }}
+                                  onClick={() => handleSoftDeleteFile(file.id)}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -708,13 +936,23 @@ export const ContentPage: React.FC = () => {
                 <div
                   className="card"
                   style={{
-                    padding: '32px',
+                    padding: '36px',
                     textAlign: 'center',
                     color: 'var(--text-muted)',
                     borderStyle: 'dashed'
                   }}
                 >
-                  No documents uploaded to this folder yet. Click "Upload PDFs" above to add course materials.
+                  <p style={{ marginBottom: '12px' }}>
+                    No materials uploaded to "{activeFolder?.name}" yet.
+                  </p>
+                  <button 
+                    className="btn-primary" 
+                    onClick={() => uploadInputRef.current?.click()}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    <Upload size={15} />
+                    Upload PDF Notes, MP4 Videos, or Images
+                  </button>
                 </div>
               )}
             </div>
@@ -722,7 +960,7 @@ export const ContentPage: React.FC = () => {
         </div>
       </div>
 
-      {/* New Folder Modal */}
+      {/* New Folder / Subfolder Modal */}
       {isFolderModalOpen && (
         <div
           style={{
@@ -735,19 +973,29 @@ export const ContentPage: React.FC = () => {
             zIndex: 1000
           }}
         >
-          <div className="card" style={{ width: '440px', backgroundColor: 'var(--surface-raised)' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>Create Folder</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Creating in: <strong style={{ color: 'var(--text-primary)' }}>{selectedBatch?.name}</strong> → <strong style={{ color: selectedSubject?.color }}>{selectedSubject?.name}</strong>
+          <div className="card" style={{ width: '460px', backgroundColor: 'var(--surface-raised)' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>
+              {currentFolderId ? `Create Subfolder in "${activeFolder?.name}"` : 'Create Root Folder'}
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+              Target: <strong style={{ color: 'var(--text-primary)' }}>{selectedBatch?.name}</strong> → <strong style={{ color: selectedSubject?.color }}>{selectedSubject?.name}</strong>
+              {breadcrumbPath.length > 0 && (
+                <>
+                  {' '}→{' '}
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                    {breadcrumbPath.map((b) => b.name).join(' → ')}
+                  </span>
+                </>
+              )}
             </p>
             <form onSubmit={handleCreateFolder} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                  Folder Name
+                  {currentFolderId ? 'Subfolder Name' : 'Folder Name'}
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Chapter 01 - Mechanics Notes"
+                  placeholder={currentFolderId ? 'e.g. Topic 1.1 - Velocity & Acceleration' : 'e.g. Chapter 01 - Mechanics Notes'}
                   className="input-field"
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
@@ -761,7 +1009,7 @@ export const ContentPage: React.FC = () => {
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary">
-                  Create Folder
+                  {currentFolderId ? 'Create Subfolder' : 'Create Folder'}
                 </button>
               </div>
             </form>
