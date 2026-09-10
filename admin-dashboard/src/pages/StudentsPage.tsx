@@ -12,7 +12,8 @@ import {
   Trash2,
   Users,
   Copy,
-  CheckCheck
+  CheckCheck,
+  Pencil
 } from 'lucide-react'
 import Papa from 'papaparse'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -29,6 +30,11 @@ export const StudentsPage: React.FC = () => {
   const [filterBoard, setFilterBoard] = useState<string>('all')
   const [filterClass, setFilterClass] = useState<string>('all')
   const [filterBatch, setFilterBatch] = useState<string>('all')
+
+  // Find the Foundation Batch if present
+  const foundationBatch = batches.find(
+    (b) => b.board === 'Foundation' || b.name.toLowerCase().includes('foundation')
+  )
 
   // Available Boards and Classes dynamically extracted from batches and students
   const availableBoards = Array.from(
@@ -62,10 +68,23 @@ export const StudentsPage: React.FC = () => {
   // Add Student Form State
   const [formCode, setFormCode] = useState('')
   const [formName, setFormName] = useState('')
-  const [formClass, setFormClass] = useState('10')
+  const [formClass, setFormClass] = useState('9')
   const [formBoard, setFormBoard] = useState('ICSE')
   const [formBatchId, setFormBatchId] = useState('')
+  const [formIsFoundation, setFormIsFoundation] = useState(false)
   const [formSubjectIds, setFormSubjectIds] = useState<string[]>([])
+
+  // Edit Student Modal State
+  const [editModalStudent, setEditModalStudent] = useState<Student | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editCode, setEditCode] = useState('')
+  const [editClass, setEditClass] = useState('9')
+  const [editBoard, setEditBoard] = useState('ICSE')
+  const [editBatchId, setEditBatchId] = useState('')
+  const [editIsFoundation, setEditIsFoundation] = useState(false)
+  const [editSubjectIds, setEditSubjectIds] = useState<string[]>([])
+  const [editIsActive, setEditIsActive] = useState(true)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
 
   const fetchStudents = async () => {
     if (!isSupabaseConfigured()) {
@@ -78,13 +97,22 @@ export const StudentsPage: React.FC = () => {
       const { data: bData } = await supabase.from('batches').select('*').order('created_at', { ascending: false })
       const { data: sData } = await supabase.from('subjects').select('*').order('name')
       setBatches(bData || [])
-      setSubjects(sData || [])
+      
+      // Filter out foundation-batch from regular subjects list
+      const validSubjects = (sData || []).filter(
+        (s) => s.slug !== 'foundation-batch' && !s.name.toLowerCase().includes('foundation')
+      )
+      setSubjects(validSubjects)
 
       const { data: stData, error } = await supabase
         .from('students')
         .select(`
           *,
           batches (*),
+          student_batches (
+            batch_id,
+            batches (*)
+          ),
           student_subjects (
             subject_id,
             subjects (*)
@@ -218,6 +246,14 @@ export const StudentsPage: React.FC = () => {
           }))
           await supabase.from('student_subjects').insert(subLinks)
         }
+
+        if (formIsFoundation && foundationBatch && newStudent) {
+          await supabase.from('student_batches').insert({
+            student_id: newStudent.id,
+            batch_id: foundationBatch.id
+          })
+        }
+
         await fetchStudents()
       } catch (err: any) {
         alert(formatUserError(err, 'Failed to add student'))
@@ -247,8 +283,99 @@ export const StudentsPage: React.FC = () => {
     setFormCode('')
     setFormName('')
     setFormBatchId('')
+    setFormIsFoundation(false)
     setFormSubjectIds([])
     setIsAddModalOpen(false)
+  }
+
+  const openEditModal = (st: Student) => {
+    setEditModalStudent(st)
+    setEditName(st.full_name)
+    setEditCode(st.student_code)
+    setEditClass(st.class_name || st.batches?.class_name || '9')
+    setEditBoard(st.board || st.batches?.board || 'ICSE')
+    setEditBatchId(st.batch_id || '')
+    const hasFoundation = Boolean(
+      st.student_batches?.some(
+        (sb) =>
+          sb.batch_id === foundationBatch?.id ||
+          sb.batches?.board === 'Foundation' ||
+          sb.batches?.name.toLowerCase().includes('foundation')
+      )
+    )
+    setEditIsFoundation(hasFoundation)
+    setEditSubjectIds(st.student_subjects?.map((ss) => ss.subject_id) || [])
+    setEditIsActive(st.is_active)
+  }
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editModalStudent || !editName.trim()) return
+
+    setIsSavingEdit(true)
+    try {
+      if (isSupabaseConfigured()) {
+        // 1. Update students table
+        const { error: stErr } = await supabase
+          .from('students')
+          .update({
+            full_name: editName.trim(),
+            class_name: editClass.trim(),
+            board: editBoard.trim(),
+            batch_id: editBatchId || null,
+            is_active: editIsActive,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editModalStudent.id)
+
+        if (stErr) throw stErr
+
+        // 2. Sync secondary batches (student_batches)
+        await supabase.from('student_batches').delete().eq('student_id', editModalStudent.id)
+        if (editIsFoundation && foundationBatch && editBatchId !== foundationBatch.id) {
+          await supabase.from('student_batches').insert({
+            student_id: editModalStudent.id,
+            batch_id: foundationBatch.id
+          })
+        }
+
+        // 3. Sync student_subjects
+        await supabase.from('student_subjects').delete().eq('student_id', editModalStudent.id)
+        if (editSubjectIds.length > 0) {
+          const subLinks = editSubjectIds.map((sId) => ({
+            student_id: editModalStudent.id,
+            subject_id: sId
+          }))
+          await supabase.from('student_subjects').insert(subLinks)
+        }
+
+        await fetchStudents()
+      } else {
+        setStudents((prev) =>
+          prev.map((s) =>
+            s.id === editModalStudent.id
+              ? {
+                  ...s,
+                  full_name: editName.trim(),
+                  class_name: editClass.trim(),
+                  board: editBoard.trim(),
+                  batch_id: editBatchId || null,
+                  is_active: editIsActive,
+                  student_subjects: subjects
+                    .filter((sub) => editSubjectIds.includes(sub.id))
+                    .map((sub) => ({ subject_id: sub.id, subjects: sub }))
+                }
+              : s
+          )
+        )
+      }
+
+      setEditModalStudent(null)
+    } catch (err: any) {
+      alert(formatUserError(err, 'Failed to update student details'))
+    } finally {
+      setIsSavingEdit(false)
+    }
   }
 
   // Normalizer to extract case-insensitive fields from CSV row
@@ -640,9 +767,34 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                        {st.batches?.name || 'Unassigned'}
-                      </span>
+                      <div>
+                        <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                          {st.batches?.name || 'Unassigned'}
+                        </span>
+                        {st.student_batches && st.student_batches.some((sb) => 
+                          sb.batch_id === foundationBatch?.id || 
+                          sb.batches?.board === 'Foundation' || 
+                          sb.batches?.name.toLowerCase().includes('foundation')
+                        ) && (
+                          <div style={{ marginTop: '4px' }}>
+                            <span
+                              className="badge"
+                              style={{
+                                backgroundColor: 'rgba(255, 159, 28, 0.15)',
+                                color: '#FF9F1C',
+                                border: '1px solid rgba(255, 159, 28, 0.4)',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              ⚡ Foundation Batch
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -693,6 +845,14 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                        <button
+                          onClick={() => openEditModal(st)}
+                          title="Manage Student Batches & Subjects"
+                          className="btn-secondary"
+                          style={{ padding: '6px 8px', fontSize: '12px', color: 'var(--accent-primary)' }}
+                        >
+                          <Pencil size={14} />
+                        </button>
                         <button
                           onClick={() => openResetModal(st)}
                           title="Reset Password"
@@ -818,7 +978,7 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
 
               <div>
                 <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                  Assigned Batch
+                  Assigned Batch (Primary)
                 </label>
                 <select
                   className="input-field"
@@ -834,6 +994,53 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                   ))}
                 </select>
               </div>
+
+              {/* Secondary Batch Option: Foundation Batch */}
+              {foundationBatch && (
+                <div
+                  onClick={() => setFormIsFoundation(!formIsFoundation)}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    border: `1px solid ${formIsFoundation ? '#FF9F1C' : 'var(--border)'}`,
+                    backgroundColor: formIsFoundation ? 'rgba(255, 159, 28, 0.08)' : 'var(--surface-card)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '18px' }}>⚡</span>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: formIsFoundation ? '#FF9F1C' : 'var(--text-primary)' }}>
+                        Also Enroll in Foundation Batch (Secondary Batch)
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        Student can switch between Primary Batch and Foundation Batch in the mobile app.
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '4px',
+                      border: `1px solid ${formIsFoundation ? '#FF9F1C' : 'var(--border)'}`,
+                      backgroundColor: formIsFoundation ? '#FF9F1C' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#000',
+                      flexShrink: 0
+                    }}
+                  >
+                    {formIsFoundation && <Check size={14} strokeWidth={3} />}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
@@ -876,6 +1083,293 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                 </button>
                 <button type="submit" className="btn-primary">
                   Add Student
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Student Modal */}
+      {editModalStudent && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div className="card" style={{ width: '560px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--surface-raised)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 600 }}>Manage Student</h3>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Code: <strong style={{ color: 'var(--accent-primary)' }}>{editModalStudent.student_code}</strong>
+                </div>
+              </div>
+              <span
+                className="badge"
+                style={{
+                  backgroundColor: editIsActive ? 'rgba(46, 204, 113, 0.1)' : 'rgba(255, 77, 77, 0.1)',
+                  color: editIsActive ? 'var(--success)' : 'var(--danger)',
+                  border: `1px solid ${editIsActive ? 'rgba(46, 204, 113, 0.3)' : 'rgba(255, 77, 77, 0.3)'}`
+                }}
+              >
+                {editIsActive ? 'Account Active' : 'Account Deactivated'}
+              </span>
+            </div>
+
+            <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    Student Code (Login ID)
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={editCode}
+                    disabled
+                    style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    Class
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={editClass}
+                    onChange={(e) => setEditClass(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    Board
+                  </label>
+                  <select
+                    className="input-field"
+                    value={editBoard}
+                    onChange={(e) => setEditBoard(e.target.value)}
+                  >
+                    <option value="ICSE">ICSE</option>
+                    <option value="CBSE">CBSE</option>
+                    <option value="WBBSE">WBBSE</option>
+                    <option value="Foundation">Foundation</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  Primary School Batch
+                </label>
+                <select
+                  className="input-field"
+                  value={editBatchId}
+                  onChange={(e) => setEditBatchId(e.target.value)}
+                  required
+                >
+                  <option value="">Select primary batch...</option>
+                  {batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} {b.board ? `(${b.board})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* SECONDARY BATCH: FOUNDATION BATCH */}
+              {foundationBatch && (
+                <div
+                  onClick={() => setEditIsFoundation(!editIsFoundation)}
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: '8px',
+                    border: `1px solid ${editIsFoundation ? '#FF9F1C' : 'var(--border)'}`,
+                    backgroundColor: editIsFoundation ? 'rgba(255, 159, 28, 0.09)' : 'var(--surface-card)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '20px' }}>⚡</span>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: editIsFoundation ? '#FF9F1C' : 'var(--text-primary)' }}>
+                        Enroll in Foundation Batch (Secondary Batch)
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        This student will see a batch switcher in the app to toggle between {editModalStudent.batches?.name || 'Primary Batch'} and Foundation Batch.
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '5px',
+                      border: `1px solid ${editIsFoundation ? '#FF9F1C' : 'var(--border)'}`,
+                      backgroundColor: editIsFoundation ? '#FF9F1C' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#000',
+                      flexShrink: 0
+                    }}
+                  >
+                    {editIsFoundation && <Check size={15} strokeWidth={3} />}
+                  </div>
+                </div>
+              )}
+
+              {/* ENROLLED SUBJECTS */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                    Enrolled Subjects (for primary batch)
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '12px', cursor: 'pointer' }}
+                      onClick={() => setEditSubjectIds(subjects.map((s) => s.id))}
+                    >
+                      Select All
+                    </button>
+                    <span style={{ color: 'var(--text-muted)' }}>•</span>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer' }}
+                      onClick={() => setEditSubjectIds([])}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                  {subjects.map((sub) => {
+                    const isChecked = editSubjectIds.includes(sub.id)
+                    return (
+                      <div
+                        key={sub.id}
+                        onClick={() =>
+                          setEditSubjectIds((prev) =>
+                            isChecked ? prev.filter((id) => id !== sub.id) : [...prev, sub.id]
+                          )
+                        }
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          border: `1px solid ${isChecked ? sub.color : 'var(--border)'}`,
+                          backgroundColor: isChecked ? 'var(--surface-hover)' : 'var(--surface-card)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '4px',
+                            border: `1px solid ${isChecked ? sub.color : 'var(--text-muted)'}`,
+                            backgroundColor: isChecked ? sub.color : 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#000'
+                          }}
+                        >
+                          {isChecked && <Check size={12} strokeWidth={3} />}
+                        </div>
+                        <span style={{ fontSize: '13px', color: isChecked ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                          {sub.name}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* ACCOUNT ACTIVE STATUS */}
+              <div
+                onClick={() => setEditIsActive(!editIsActive)}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'var(--surface-card)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                    Student Account Status
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    {editIsActive ? 'Student can log in and view course materials' : 'Account deactivated — access denied'}
+                  </div>
+                </div>
+                <span
+                  className="badge"
+                  style={{
+                    backgroundColor: editIsActive ? 'rgba(46, 204, 113, 0.15)' : 'rgba(255, 77, 77, 0.15)',
+                    color: editIsActive ? 'var(--success)' : 'var(--danger)',
+                    border: `1px solid ${editIsActive ? 'rgba(46, 204, 113, 0.4)' : 'rgba(255, 77, 77, 0.4)'}`,
+                    fontWeight: 600
+                  }}
+                >
+                  {editIsActive ? 'Active' : 'Deactivated'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setEditModalStudent(null)}
+                  disabled={isSavingEdit}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isSavingEdit}
+                >
+                  {isSavingEdit ? 'Saving Changes...' : 'Save Student Changes'}
                 </button>
               </div>
             </form>

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/subject.dart';
+import '../models/batch.dart';
 import '../models/folder.dart';
 import '../models/file_item.dart';
 import '../models/student.dart';
@@ -22,6 +23,56 @@ class SupabaseService {
     return StudentModel.fromJson(response);
   }
 
+  /// Fetch all batches this student is enrolled in (primary batch + any secondary batches)
+  static Future<List<BatchModel>> getStudentBatches(String? primaryBatchId) async {
+    final user = client.auth.currentUser;
+    final List<BatchModel> batches = [];
+    final Set<String> seenIds = {};
+
+    // 1. Fetch primary batch
+    if (primaryBatchId != null) {
+      try {
+        final bRes = await client
+            .from('batches')
+            .select()
+            .eq('id', primaryBatchId)
+            .maybeSingle();
+        if (bRes != null) {
+          final b = BatchModel.fromJson(bRes);
+          batches.add(b);
+          seenIds.add(b.id);
+        }
+      } catch (e) {
+        debugPrint('[SupabaseService] Error loading primary batch: $e');
+      }
+    }
+
+    // 2. Fetch secondary batches from student_batches
+    if (user != null) {
+      try {
+        final sbRes = await client
+            .from('student_batches')
+            .select('batch_id, batches (*)')
+            .eq('student_id', user.id);
+
+        for (final row in (sbRes as List)) {
+          final batchData = row['batches'];
+          if (batchData != null && batchData is Map<String, dynamic>) {
+            final b = BatchModel.fromJson(batchData);
+            if (!seenIds.contains(b.id)) {
+              batches.add(b);
+              seenIds.add(b.id);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[SupabaseService] Error loading secondary batches: $e');
+      }
+    }
+
+    return batches;
+  }
+
   /// Fetch only subjects this student is enrolled in (enforced via Postgres RLS)
   static Future<List<SubjectModel>> getEnrolledSubjects() async {
     final response = await client
@@ -32,20 +83,25 @@ class SupabaseService {
     return (response as List).map((e) => SubjectModel.fromJson(e)).toList();
   }
 
-  /// Fetch non-deleted folders for a specific subject and batch (enforced via RLS)
-  static Future<List<FolderModel>> getFolders(
-    String subjectId, {
+  /// Fetch non-deleted folders for a subject OR direct batch folders (enforced via RLS)
+  static Future<List<FolderModel>> getFolders({
+    String? subjectId,
     String? parentFolderId,
     String? batchId,
   }) async {
     var query = client
         .from('folders')
         .select()
-        .eq('subject_id', subjectId)
         .eq('is_deleted', false);
 
+    if (subjectId != null) {
+      query = query.eq('subject_id', subjectId);
+    } else {
+      query = query.filter('subject_id', 'is', null);
+    }
+
     if (batchId != null) {
-      query = query.or('batch_id.eq.$batchId,batch_id.is.null');
+      query = query.eq('batch_id', batchId);
     }
 
     if (parentFolderId == null) {

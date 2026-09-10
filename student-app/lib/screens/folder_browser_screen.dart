@@ -2,19 +2,22 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../core/supabase_service.dart';
 import '../models/subject.dart';
+import '../models/batch.dart';
 import '../models/folder.dart';
 import '../models/file_item.dart';
 import '../models/student.dart';
 import 'secure_pdf_viewer_screen.dart';
 
 class FolderBrowserScreen extends StatefulWidget {
-  final SubjectModel subject;
+  final SubjectModel? subject;
+  final BatchModel? batch;
   final FolderModel? parentFolder;
   final StudentModel? studentProfile;
 
   const FolderBrowserScreen({
     super.key,
-    required this.subject,
+    this.subject,
+    this.batch,
     this.parentFolder,
     this.studentProfile,
   });
@@ -43,9 +46,9 @@ class _FolderBrowserScreenState extends State<FolderBrowserScreen> {
 
     try {
       final folders = await SupabaseService.getFolders(
-        widget.subject.id,
+        subjectId: widget.subject?.id,
         parentFolderId: widget.parentFolder?.id,
-        batchId: widget.studentProfile?.batchId,
+        batchId: widget.batch?.id ?? (widget.subject == null ? widget.studentProfile?.batchId : null),
       );
 
       List<FileItemModel> files = [];
@@ -91,8 +94,10 @@ class _FolderBrowserScreenState extends State<FolderBrowserScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.parentFolder?.name ?? widget.subject.name;
-    final subjectColor = AppColors.getSubjectColor(widget.subject.slug);
+    final title = widget.parentFolder?.name ?? widget.subject?.name ?? widget.batch?.name ?? 'Study Materials';
+    final subjectColor = widget.subject != null
+        ? AppColors.getSubjectColor(widget.subject!.slug)
+        : const Color(0xFFFF9F1C);
 
     return Scaffold(
       backgroundColor: AppColors.bgPage,
@@ -149,7 +154,7 @@ class _FolderBrowserScreenState extends State<FolderBrowserScreen> {
                         const Icon(Icons.folder_open_outlined, size: 48, color: AppColors.textMuted),
                         const SizedBox(height: 16),
                         Text(
-                          'No files yet — your teacher hasn\'t added anything for ${widget.subject.name}.',
+                          'No files yet — your teacher hasn\'t added anything for ${widget.subject?.name ?? widget.batch?.name ?? 'this folder'}.',
                           textAlign: TextAlign.center,
                           style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
                         ),
@@ -195,11 +200,12 @@ class _FolderBrowserScreenState extends State<FolderBrowserScreen> {
                                 onTap: () {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => FolderBrowserScreen(
-                                        subject: widget.subject,
-                                        parentFolder: folder,
-                                        studentProfile: widget.studentProfile,
-                                      ),
+                                        builder: (_) => FolderBrowserScreen(
+                                          subject: widget.subject,
+                                          batch: widget.batch,
+                                          parentFolder: folder,
+                                          studentProfile: widget.studentProfile,
+                                        ),
                                     ),
                                   );
                                 },

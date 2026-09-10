@@ -28,6 +28,12 @@ export interface BatchSubject {
   subject_id: string
 }
 
+export interface StudentBatch {
+  student_id: string
+  batch_id: string
+  batches?: Batch
+}
+
 export interface Student {
   id: string
   student_code: string
@@ -40,6 +46,7 @@ export interface Student {
   created_at: string
   updated_at: string
   batches?: Batch
+  student_batches?: { batch_id: string; batches?: Batch }[]
   student_subjects?: { subject_id: string; subjects: Subject }[]
 }
 

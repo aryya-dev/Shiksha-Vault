@@ -68,7 +68,10 @@ export const ContentPage: React.FC = () => {
         setSelectedBatch(null)
       }
 
-      const validSubjects = sData || []
+      // Filter out foundation-batch from regular subjects list (Foundation is a direct batch, not a subject)
+      const validSubjects = (sData || []).filter(
+        (s) => s.slug !== 'foundation-batch' && !s.name.toLowerCase().includes('foundation')
+      )
       setSubjects(validSubjects)
       if (validSubjects.length > 0) {
         setSelectedSubject((prev) => (prev ? (validSubjects.find((s) => s.id === prev.id) || validSubjects[0]) : validSubjects[0]))
@@ -105,11 +108,18 @@ export const ContentPage: React.FC = () => {
     loadDatabaseData()
   }, [])
 
-  // Filter folders: MUST match selectedBatch.id, selectedSubject.id, and parent_folder_id = currentFolderId
+  const isDirectBatch = Boolean(
+    selectedBatch?.board === 'Foundation' || selectedBatch?.name.toLowerCase().includes('foundation')
+  )
+
+  // Filter folders: for direct batch (Foundation), matches batch and subject_id is null.
+  // For regular batches, matches batch and selectedSubject.id.
   const currentFolders = folders.filter((f) => {
-    if (!selectedBatch || !selectedSubject) return false
+    if (!selectedBatch) return false
     const matchesBatch = f.batch_id === selectedBatch.id || (!f.batch_id && batches[0]?.id === selectedBatch.id)
-    const matchesSubject = f.subject_id === selectedSubject.id
+    const matchesSubject = isDirectBatch
+      ? (!f.subject_id)
+      : (selectedSubject ? f.subject_id === selectedSubject.id : false)
     const matchesParent = f.parent_folder_id === currentFolderId
     return matchesBatch && matchesSubject && matchesParent && !f.is_deleted
   }).sort((a, b) => a.sort_order - b.sort_order)
@@ -206,7 +216,10 @@ export const ContentPage: React.FC = () => {
   // Create folder inside current batch, subject, and currentFolderId
   const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newFolderName.trim() || !selectedBatch || !selectedSubject) return
+    if (!newFolderName.trim() || !selectedBatch) return
+    if (!isDirectBatch && !selectedSubject) return
+
+    const targetSubjectId = isDirectBatch ? null : (selectedSubject?.id || null)
 
     if (isSupabaseConfigured()) {
       try {
@@ -214,7 +227,7 @@ export const ContentPage: React.FC = () => {
           .from('folders')
           .insert({
             batch_id: selectedBatch.id,
-            subject_id: selectedSubject.id,
+            subject_id: targetSubjectId,
             name: newFolderName.trim(),
             parent_folder_id: currentFolderId,
             sort_order: currentFolders.length + 1,
@@ -232,7 +245,7 @@ export const ContentPage: React.FC = () => {
       const newFolder: Folder = {
         id: `folder-${Date.now()}`,
         batch_id: selectedBatch.id,
-        subject_id: selectedSubject.id,
+        subject_id: targetSubjectId || '',
         name: newFolderName.trim(),
         parent_folder_id: currentFolderId,
         sort_order: currentFolders.length + 1,
@@ -309,7 +322,8 @@ export const ContentPage: React.FC = () => {
   // Multi-format file upload (PDF, MP4, Images)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = e.target.files
-    if (!uploadedFiles || uploadedFiles.length === 0 || !currentFolderId || !selectedBatch || !selectedSubject) return
+    if (!uploadedFiles || uploadedFiles.length === 0 || !currentFolderId || !selectedBatch) return
+    if (!isDirectBatch && !selectedSubject) return
 
     setIsLoading(true)
     try {
@@ -319,7 +333,8 @@ export const ContentPage: React.FC = () => {
         const file = uploadedFiles[i]
         const fileType = deriveFileType(file)
         const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-        const storagePath = `${selectedBatch.id}/${selectedSubject.slug}/${currentFolderId}/${Date.now()}-${sanitizedFileName}`
+        const subjectFolderSegment = isDirectBatch ? 'foundation' : (selectedSubject?.slug || 'general')
+        const storagePath = `${selectedBatch.id}/${subjectFolderSegment}/${currentFolderId}/${Date.now()}-${sanitizedFileName}`
 
         if (isSupabaseConfigured()) {
           // 1. Upload binary file to Supabase Storage 'course-materials'
@@ -585,8 +600,8 @@ export const ContentPage: React.FC = () => {
           </div>
         )}
 
-        {/* 2. SUBJECT TABS */}
-        {selectedBatch && subjects.length > 0 && selectedSubject && (
+        {/* 2. SUBJECT TABS (Hidden for Direct Batch e.g. Foundation) */}
+        {!isDirectBatch && selectedBatch && subjects.length > 0 && selectedSubject && (
           <div>
             <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Subjects for {selectedBatch.name}
@@ -624,6 +639,47 @@ export const ContentPage: React.FC = () => {
           </div>
         )}
 
+        {/* DIRECT BATCH BANNER (Shown when selectedBatch is Foundation) */}
+        {isDirectBatch && selectedBatch && (
+          <div
+            style={{
+              padding: '14px 18px',
+              borderRadius: '8px',
+              backgroundColor: 'rgba(255, 159, 28, 0.08)',
+              border: '1px solid rgba(255, 159, 28, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '20px' }}>⚡</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#FF9F1C' }}>
+                  Direct Foundation Course Content
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  This batch contains direct folders and study materials without subject divisions.
+                </div>
+              </div>
+            </div>
+            <span
+              className="badge"
+              style={{
+                backgroundColor: 'rgba(255, 159, 28, 0.15)',
+                color: '#FF9F1C',
+                border: '1px solid rgba(255, 159, 28, 0.4)',
+                fontWeight: 600,
+                fontSize: '12px'
+              }}
+            >
+              Direct Folders Mode
+            </span>
+          </div>
+        )}
+
         {/* 3. MULTI-LEVEL BREADCRUMBS */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
           <span
@@ -637,7 +693,7 @@ export const ContentPage: React.FC = () => {
             style={{ cursor: 'pointer', color: currentFolderId === null ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: currentFolderId === null ? 600 : 400 }}
             onClick={() => setCurrentFolderId(null)}
           >
-            {selectedSubject?.name || 'Subject'} Root
+            {isDirectBatch ? 'Root Folders' : `${selectedSubject?.name || 'Subject'} Root`}
           </span>
           {breadcrumbPath.map((folder, idx) => {
             const isLast = idx === breadcrumbPath.length - 1
@@ -829,7 +885,7 @@ export const ContentPage: React.FC = () => {
                   </span>
                 ) : (
                   <span>
-                    No root folders created for {selectedSubject?.name} in {selectedBatch?.name}. Click "Add Root Folder" to create one.
+                    No root folders created for {isDirectBatch ? selectedBatch?.name : selectedSubject?.name}. Click "Add Root Folder" to create one.
                   </span>
                 )}
               </div>
@@ -978,7 +1034,10 @@ export const ContentPage: React.FC = () => {
               {currentFolderId ? `Create Subfolder in "${activeFolder?.name}"` : 'Create Root Folder'}
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-              Target: <strong style={{ color: 'var(--text-primary)' }}>{selectedBatch?.name}</strong> → <strong style={{ color: selectedSubject?.color }}>{selectedSubject?.name}</strong>
+              Target: <strong style={{ color: 'var(--text-primary)' }}>{selectedBatch?.name}</strong>
+              {!isDirectBatch && selectedSubject && (
+                <> → <strong style={{ color: selectedSubject.color }}>{selectedSubject.name}</strong></>
+              )}
               {breadcrumbPath.length > 0 && (
                 <>
                   {' '}→{' '}
