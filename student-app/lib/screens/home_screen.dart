@@ -42,7 +42,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final profile = await SupabaseService.getStudentProfile();
-      final batches = await SupabaseService.getStudentBatches(profile?.batchId);
+      final batches = await SupabaseService.getStudentBatches(
+        studentId: profile?.id,
+        primaryBatchId: profile?.batchId,
+      );
 
       BatchModel? activeBatch;
       if (batches.isNotEmpty) {
@@ -60,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         final allSubs = await SupabaseService.getEnrolledSubjects();
         subs = allSubs
-            .filter((s) => s.slug != 'foundation-batch' && !s.name.toLowerCase().contains('foundation'))
+            .where((s) => s.slug != 'foundation-batch' && !s.name.toLowerCase().contains('foundation'))
             .toList();
       }
 

@@ -159,6 +159,23 @@ $$ language plpgsql security definer stable;
 grant execute on function public.can_access_storage_file(text) to authenticated, anon, service_role;
 
 -- ----------------------------------------------------------------------------
+-- 7B. UPDATE BATCHES RLS POLICY (ALLOW STUDENTS TO READ SECONDARY BATCHES)
+-- ----------------------------------------------------------------------------
+drop policy if exists "batches_read_policy" on public.batches;
+
+create policy "batches_read_policy"
+  on public.batches for select
+  using (
+    public.is_admin() 
+    or (
+      public.is_active_student() and (
+        id in (select batch_id from public.students where id = auth.uid())
+        or id in (select batch_id from public.student_batches where student_id = auth.uid())
+      )
+    )
+  );
+
+-- ----------------------------------------------------------------------------
 -- 8. VERIFY BATCHES & SUBJECTS STATE
 -- ----------------------------------------------------------------------------
 select b.name as batch_name, b.board, count(bs.subject_id) as assigned_subjects

@@ -24,8 +24,9 @@ class SupabaseService {
   }
 
   /// Fetch all batches this student is enrolled in (primary batch + any secondary batches)
-  static Future<List<BatchModel>> getStudentBatches(String? primaryBatchId) async {
+  static Future<List<BatchModel>> getStudentBatches({String? studentId, String? primaryBatchId}) async {
     final user = client.auth.currentUser;
+    final targetStudentId = studentId ?? user?.id;
     final List<BatchModel> batches = [];
     final Set<String> seenIds = {};
 
@@ -48,12 +49,12 @@ class SupabaseService {
     }
 
     // 2. Fetch secondary batches from student_batches
-    if (user != null) {
+    if (targetStudentId != null) {
       try {
         final sbRes = await client
             .from('student_batches')
             .select('batch_id, batches (*)')
-            .eq('student_id', user.id);
+            .eq('student_id', targetStudentId);
 
         for (final row in (sbRes as List)) {
           final batchData = row['batches'];
@@ -62,6 +63,24 @@ class SupabaseService {
             if (!seenIds.contains(b.id)) {
               batches.add(b);
               seenIds.add(b.id);
+            }
+          } else if (row['batch_id'] != null) {
+            // Direct query fallback if joined batches was null
+            try {
+              final directB = await client
+                  .from('batches')
+                  .select()
+                  .eq('id', row['batch_id'])
+                  .maybeSingle();
+              if (directB != null) {
+                final b = BatchModel.fromJson(directB);
+                if (!seenIds.contains(b.id)) {
+                  batches.add(b);
+                  seenIds.add(b.id);
+                }
+              }
+            } catch (e2) {
+              debugPrint('[SupabaseService] Error loading direct secondary batch: $e2');
             }
           }
         }
