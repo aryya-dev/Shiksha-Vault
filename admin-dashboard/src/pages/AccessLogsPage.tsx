@@ -443,7 +443,7 @@ export const AccessLogsPage: React.FC = () => {
             </h3>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '420px' }}>
               {logs.length === 0
-                ? 'When enrolled students view documents or trigger anti-leak defenses in the Shiksha Vault mobile app, real-time audit logs will appear here automatically.'
+                ? 'When enrolled students view documents or trigger anti-leak defenses in the Shiksharthi mobile app, real-time audit logs will appear here automatically.'
                 : 'Try adjusting your search query or event filter to see other security events.'}
             </p>
           </div>

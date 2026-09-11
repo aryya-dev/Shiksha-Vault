@@ -31,7 +31,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           const isStudent = Boolean(data.user.email?.toLowerCase().endsWith('@student.shiksharthi.in'))
           if (isStudent) {
             await supabase.auth.signOut()
-            throw new Error('This account belongs to a student. Please use the Shiksha Vault mobile app to log in.')
+            throw new Error('This account belongs to a student. Please use the Shiksharthi Educational Institute mobile app to log in.')
           }
 
           // Ensure admin privileges in database via RPC
@@ -95,7 +95,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
             />
           </div>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Shiksha Vault • Administrator Portal
+            Shiksharthi Educational Institute • Administrator Portal
           </p>
         </div>
 

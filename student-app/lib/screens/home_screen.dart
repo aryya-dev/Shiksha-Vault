@@ -170,9 +170,9 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              isFoundationActive ? 'Foundation Course' : 'Enrolled Subjects',
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+            const Text(
+              'Shiksharthi',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
             ),
             if (_studentProfile != null)
               Text(
@@ -427,38 +427,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       children: [
-        // Foundation Batch Banner
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E160D),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0x66FF9F1C)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.bolt_rounded, color: foundationColor, size: 24),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Foundation Course Materials',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: foundationColor),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Direct study notes, advanced problem sets, and practice materials',
-                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
 
         if (_foundationFolders.isEmpty) ...[
           const Center(

@@ -75,7 +75,7 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
             </div>
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                Download Shiksha Vault App
+                Download Shiksharthi Mobile App
               </h2>
               <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
                 Universal Release • 30.7 MB • Any Network / Cellular
@@ -113,7 +113,7 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
           }}>
             <img
               src={qrCodeUrl}
-              alt="Scan to Download Shiksha Vault APK"
+              alt="Scan to Download Shiksharthi APK"
               style={{ width: '220px', height: '220px', display: 'block', borderRadius: '4px' }}
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#333333', fontSize: '12px', fontWeight: 600 }}>
@@ -126,7 +126,7 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <a
               href={publicApkUrl}
-              download="Shiksha-Vault.apk"
+              download="Shiksharthi.apk"
               style={{
                 display: 'flex',
                 alignItems: 'center',

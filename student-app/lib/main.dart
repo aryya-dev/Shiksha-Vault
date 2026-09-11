@@ -31,7 +31,7 @@ class ShikshaVaultApp extends StatelessWidget {
     final session = Supabase.instance.client.auth.currentSession;
 
     return MaterialApp(
-      title: 'Shiksha Vault',
+      title: 'Shiksharthi Educational Institute',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       home: session != null ? const HomeScreen() : const LoginScreen(),

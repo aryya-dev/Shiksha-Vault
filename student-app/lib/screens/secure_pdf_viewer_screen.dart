@@ -358,7 +358,7 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
   }
 }
 
-/// Custom painter for dense, high-contrast diagonal tiled watermark
+/// Custom painter for a single prominent diagonal "Shiksharthi" watermark
 class WatermarkPainter extends CustomPainter {
   final String studentName;
   final String studentCode;
@@ -372,50 +372,32 @@ class WatermarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const double stepX = 230;
-    const double stepY = 150;
-
-    // High-contrast dual-tone text: Dark slate foreground + subtle light halo shadow
-    // Guarantees prominent legibility on white textbook pages, dark diagrams, and scans
+    // 1. Prominent diagonal "Shiksharthi" heading
     final primaryStyle = TextStyle(
-      color: const Color(0xFF0F172A).withOpacity(0.18),
-      fontSize: 12.5,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.4,
-      height: 1.3,
+      color: const Color(0xFF0F172A).withValues(alpha: 0.16),
+      fontSize: 52,
+      fontWeight: FontWeight.w900,
+      letterSpacing: 4.0,
+      fontFamily: 'sans-serif',
       shadows: [
         Shadow(
-          color: Colors.white.withOpacity(0.75),
-          offset: const Offset(1, 1),
-          blurRadius: 1.5,
+          color: Colors.white.withValues(alpha: 0.65),
+          offset: const Offset(1.5, 1.5),
+          blurRadius: 2.0,
         ),
       ],
     );
 
-    final secondaryStyle = TextStyle(
-      color: const Color(0xFF1E293B).withOpacity(0.16),
-      fontSize: 10.5,
+    // 2. Subtle student verification line beneath the institute name
+    final studentInfoStyle = TextStyle(
+      color: const Color(0xFF1E293B).withValues(alpha: 0.13),
+      fontSize: 12.0,
       fontWeight: FontWeight.w600,
-      letterSpacing: 0.3,
-      height: 1.3,
+      letterSpacing: 1.2,
+      height: 1.4,
       shadows: [
         Shadow(
-          color: Colors.white.withOpacity(0.7),
-          offset: const Offset(1, 1),
-          blurRadius: 1.0,
-        ),
-      ],
-    );
-
-    final securityBadgeStyle = TextStyle(
-      color: const Color(0xFFE11D48).withOpacity(0.16), // Security red
-      fontSize: 9.0,
-      fontWeight: FontWeight.w800,
-      letterSpacing: 0.8,
-      height: 1.3,
-      shadows: [
-        Shadow(
-          color: Colors.white.withOpacity(0.6),
+          color: Colors.white.withValues(alpha: 0.6),
           offset: const Offset(1, 1),
           blurRadius: 1.0,
         ),
@@ -424,9 +406,8 @@ class WatermarkPainter extends CustomPainter {
 
     final textSpan = TextSpan(
       children: [
-        TextSpan(text: '$studentName\n', style: primaryStyle),
-        TextSpan(text: '$studentCode • $timestamp\n', style: secondaryStyle),
-        TextSpan(text: 'SHIKSHA VAULT • CONFIDENTIAL', style: securityBadgeStyle),
+        TextSpan(text: 'Shiksharthi\n', style: primaryStyle),
+        TextSpan(text: '$studentName • $studentCode • $timestamp', style: studentInfoStyle),
       ],
     );
 
@@ -436,15 +417,12 @@ class WatermarkPainter extends CustomPainter {
       textDirection: ui.TextDirection.ltr,
     )..layout();
 
-    for (double x = -80; x < size.width + 120; x += stepX) {
-      for (double y = -60; y < size.height + 100; y += stepY) {
-        canvas.save();
-        canvas.translate(x, y);
-        canvas.rotate(-0.35); // Diagonal tilt
-        textPainter.paint(canvas, Offset.zero);
-        canvas.restore();
-      }
-    }
+    // Render one single, big watermark positioned diagonally in the center
+    canvas.save();
+    canvas.translate(size.width / 2, size.height / 2);
+    canvas.rotate(-0.52); // ~30 degrees diagonal tilt
+    textPainter.paint(canvas, Offset(-textPainter.width / 2, -textPainter.height / 2));
+    canvas.restore();
   }
 
   @override

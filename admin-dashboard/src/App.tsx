@@ -71,7 +71,7 @@ export function App() {
         color: 'var(--text-muted)',
         fontSize: '14px'
       }}>
-        Loading Shiksha Vault...
+        Loading Shiksharthi Educational Institute...
       </div>
     )
   }

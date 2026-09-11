@@ -124,11 +124,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
         <div>
-          <h1 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            Shiksha Vault
+          <h1 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+            Shiksharthi
           </h1>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Admin Console v1.0
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            Educational Institute
           </p>
         </div>
       </div>
@@ -218,7 +218,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div>
               <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Shiksha Vault App
+                Shiksharthi App
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                 v1.0 • 30.7 MB Release

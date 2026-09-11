@@ -201,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   _mustChangePassword 
                       ? 'Set your permanent password'
-                      : 'Shiksha Vault • Student Document Portal',
+                      : 'Shiksharthi Educational Institute',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 14,
