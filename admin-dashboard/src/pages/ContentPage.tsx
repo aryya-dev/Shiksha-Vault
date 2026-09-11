@@ -118,7 +118,7 @@ export const ContentPage: React.FC = () => {
     if (!selectedBatch) return false
     const matchesBatch = f.batch_id === selectedBatch.id || (!f.batch_id && batches[0]?.id === selectedBatch.id)
     const matchesSubject = isDirectBatch
-      ? (!f.subject_id)
+      ? true
       : (selectedSubject ? f.subject_id === selectedSubject.id : false)
     const matchesParent = f.parent_folder_id === currentFolderId
     return matchesBatch && matchesSubject && matchesParent && !f.is_deleted

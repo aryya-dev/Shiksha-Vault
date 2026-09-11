@@ -108,29 +108,53 @@ class SupabaseService {
     String? parentFolderId,
     String? batchId,
   }) async {
-    var query = client
-        .from('folders')
-        .select()
-        .eq('is_deleted', false);
+    try {
+      var query = client
+          .from('folders')
+          .select()
+          .eq('is_deleted', false);
 
-    if (subjectId != null) {
-      query = query.eq('subject_id', subjectId);
-    } else {
-      query = query.filter('subject_id', 'is', null);
+      if (batchId != null) {
+        query = query.eq('batch_id', batchId);
+      }
+
+      if (subjectId != null) {
+        query = query.eq('subject_id', subjectId);
+      }
+
+      if (parentFolderId == null) {
+        query = query.filter('parent_folder_id', 'is', null);
+      } else {
+        query = query.eq('parent_folder_id', parentFolderId);
+      }
+
+      final response = await query.order('sort_order', ascending: true);
+      return (response as List).map((e) => FolderModel.fromJson(e)).toList();
+    } catch (e) {
+      debugPrint('[SupabaseService] getFolders error: $e, attempting fallback query...');
+      try {
+        var fbQuery = client
+            .from('folders')
+            .select()
+            .eq('is_deleted', false);
+        if (batchId != null) {
+          fbQuery = fbQuery.eq('batch_id', batchId);
+        }
+        if (subjectId != null) {
+          fbQuery = fbQuery.eq('subject_id', subjectId);
+        }
+        final fbRes = await fbQuery.order('sort_order', ascending: true);
+        final list = (fbRes as List).map((e) => FolderModel.fromJson(e)).toList();
+        if (parentFolderId == null) {
+          return list.where((f) => f.parentFolderId == null || f.parentFolderId!.isEmpty).toList();
+        } else {
+          return list.where((f) => f.parentFolderId == parentFolderId).toList();
+        }
+      } catch (fbErr) {
+        debugPrint('[SupabaseService] Fallback getFolders error: $fbErr');
+        rethrow;
+      }
     }
-
-    if (batchId != null) {
-      query = query.eq('batch_id', batchId);
-    }
-
-    if (parentFolderId == null) {
-      query = query.filter('parent_folder_id', 'is', null);
-    } else {
-      query = query.eq('parent_folder_id', parentFolderId);
-    }
-
-    final response = await query.order('sort_order', ascending: true);
-    return (response as List).map((e) => FolderModel.fromJson(e)).toList();
   }
 
   /// Fetch non-deleted files for a folder (enforced via RLS)

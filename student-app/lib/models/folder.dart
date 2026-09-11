@@ -1,7 +1,7 @@
 class FolderModel {
   final String id;
   final String? batchId;
-  final String subjectId;
+  final String? subjectId;
   final String name;
   final String? parentFolderId;
   final int sortOrder;
@@ -10,7 +10,7 @@ class FolderModel {
   FolderModel({
     required this.id,
     this.batchId,
-    required this.subjectId,
+    this.subjectId,
     required this.name,
     this.parentFolderId,
     required this.sortOrder,
@@ -19,10 +19,10 @@ class FolderModel {
 
   factory FolderModel.fromJson(Map<String, dynamic> json) {
     return FolderModel(
-      id: json['id'] as String,
+      id: json['id'] as String? ?? '',
       batchId: json['batch_id'] as String?,
-      subjectId: json['subject_id'] as String,
-      name: json['name'] as String,
+      subjectId: json['subject_id'] as String?,
+      name: json['name'] as String? ?? 'Untitled Folder',
       parentFolderId: json['parent_folder_id'] as String?,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
       isDeleted: json['is_deleted'] as bool? ?? false,

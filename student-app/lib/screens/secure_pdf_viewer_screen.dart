@@ -308,10 +308,10 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
                   decoration: BoxDecoration(
                     color: const Color(0xDD0E0E10),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.18)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
+                        color: Colors.black.withValues(alpha: 0.4),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -372,32 +372,32 @@ class WatermarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Prominent diagonal "Shiksharthi" heading
+    // 1. Subtle diagonal "Shiksharthi" heading
     final primaryStyle = TextStyle(
-      color: const Color(0xFF0F172A).withValues(alpha: 0.16),
+      color: const Color(0xFF0F172A).withValues(alpha: 0.065),
       fontSize: 52,
       fontWeight: FontWeight.w900,
       letterSpacing: 4.0,
       fontFamily: 'sans-serif',
       shadows: [
         Shadow(
-          color: Colors.white.withValues(alpha: 0.65),
-          offset: const Offset(1.5, 1.5),
-          blurRadius: 2.0,
+          color: Colors.white.withValues(alpha: 0.25),
+          offset: const Offset(1.0, 1.0),
+          blurRadius: 1.0,
         ),
       ],
     );
 
-    // 2. Subtle student verification line beneath the institute name
+    // 2. Ultra-subtle student verification line beneath the institute name
     final studentInfoStyle = TextStyle(
-      color: const Color(0xFF1E293B).withValues(alpha: 0.13),
+      color: const Color(0xFF1E293B).withValues(alpha: 0.05),
       fontSize: 12.0,
       fontWeight: FontWeight.w600,
       letterSpacing: 1.2,
       height: 1.4,
       shadows: [
         Shadow(
-          color: Colors.white.withValues(alpha: 0.6),
+          color: Colors.white.withValues(alpha: 0.2),
           offset: const Offset(1, 1),
           blurRadius: 1.0,
         ),

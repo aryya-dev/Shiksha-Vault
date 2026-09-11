@@ -59,12 +59,22 @@ class _HomeScreenState extends State<HomeScreen> {
       List<FolderModel> fFolders = [];
 
       if (activeBatch != null && activeBatch.isFoundation) {
-        fFolders = await SupabaseService.getFolders(batchId: activeBatch.id);
+        try {
+          fFolders = await SupabaseService.getFolders(batchId: activeBatch.id);
+        } catch (fErr) {
+          debugPrint('[HomeScreen] Foundation folder load error: $fErr');
+          fFolders = [];
+        }
       } else {
-        final allSubs = await SupabaseService.getEnrolledSubjects();
-        subs = allSubs
-            .where((s) => s.slug != 'foundation-batch' && !s.name.toLowerCase().contains('foundation'))
-            .toList();
+        try {
+          final allSubs = await SupabaseService.getEnrolledSubjects();
+          subs = allSubs
+              .where((s) => s.slug != 'foundation-batch' && !s.name.toLowerCase().contains('foundation'))
+              .toList();
+        } catch (sErr) {
+          debugPrint('[HomeScreen] Enrolled subjects load error: $sErr');
+          subs = [];
+        }
       }
 
       if (mounted) {
@@ -119,14 +129,19 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       } catch (e) {
         debugPrint('[HomeScreen] Error loading foundation folders: $e');
-        if (mounted) setState(() => _isLoadingFoundation = false);
+        if (mounted) {
+          setState(() {
+            _foundationFolders = [];
+            _isLoadingFoundation = false;
+          });
+        }
       }
     } else {
       if (_subjects.isEmpty) {
         try {
           final allSubs = await SupabaseService.getEnrolledSubjects();
           final subs = allSubs
-              .filter((s) => s.slug != 'foundation-batch' && !s.name.toLowerCase().contains('foundation'))
+              .where((s) => s.slug != 'foundation-batch' && !s.name.toLowerCase().contains('foundation'))
               .toList();
           if (mounted) {
             setState(() => _subjects = subs);
