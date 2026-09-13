@@ -7,6 +7,7 @@ import '../models/folder.dart';
 import '../models/file_item.dart';
 import '../models/student.dart';
 import 'secure_pdf_viewer_screen.dart';
+import 'secure_video_player_screen.dart';
 
 class FolderBrowserScreen extends StatefulWidget {
   final SubjectModel? subject;
@@ -265,12 +266,18 @@ class _FolderBrowserScreenState extends State<FolderBrowserScreen> {
                               ),
                               trailing: const Icon(Icons.remove_red_eye_outlined, color: AppColors.accentPrimary, size: 18),
                               onTap: () {
+                                final isVideo = formatLabel == 'Video';
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (_) => SecurePdfViewerScreen(
-                                      file: file,
-                                      studentProfile: widget.studentProfile,
-                                    ),
+                                    builder: (_) => isVideo
+                                        ? SecureVideoPlayerScreen(
+                                            file: file,
+                                            studentProfile: widget.studentProfile,
+                                          )
+                                        : SecurePdfViewerScreen(
+                                            file: file,
+                                            studentProfile: widget.studentProfile,
+                                          ),
                                   ),
                                 );
                               },

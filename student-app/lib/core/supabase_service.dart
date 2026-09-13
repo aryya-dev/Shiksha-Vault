@@ -169,12 +169,12 @@ class SupabaseService {
     return (response as List).map((e) => FileItemModel.fromJson(e)).toList();
   }
 
-  /// Request short-lived signed URL (expires in 300 seconds) for private storage PDF
-  static Future<String?> getSignedFileUrl(String storagePath) async {
+  /// Request short-lived signed URL for private storage media/video
+  static Future<String?> getSignedFileUrl(String storagePath, {int expiresIn = 3600}) async {
     try {
       final signedUrl = await client.storage
           .from('course-materials')
-          .createSignedUrl(storagePath, 300); // 5 minutes ephemeral access
+          .createSignedUrl(storagePath, expiresIn); // Defaults to 1 hour ephemeral streaming access
       return signedUrl;
     } catch (e) {
       debugPrint('[SupabaseService] Error creating signed URL: $e');

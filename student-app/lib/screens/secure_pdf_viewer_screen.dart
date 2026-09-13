@@ -9,6 +9,7 @@ import '../core/security_service.dart';
 import '../core/supabase_service.dart';
 import '../models/file_item.dart';
 import '../models/student.dart';
+import 'secure_video_player_screen.dart';
 
 class SecurePdfViewerScreen extends StatefulWidget {
   final FileItemModel file;
@@ -40,6 +41,23 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
     WidgetsBinding.instance.addObserver(this);
     // 1. Activate Android FLAG_SECURE
     SecurityService.enableScreenProtection();
+
+    if (_isVideoFile) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => SecureVideoPlayerScreen(
+                file: widget.file,
+                studentProfile: widget.studentProfile,
+              ),
+            ),
+          );
+        }
+      });
+      return;
+    }
+
     // 2. Fetch encrypted PDF binary directly into memory
     _loadPdf();
     // 3. Log access event
@@ -137,7 +155,6 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
   }
 
   bool get _isImageFile {
-
     final type = widget.file.fileType.toLowerCase();
     final name = widget.file.name.toLowerCase();
     return type.startsWith('image/') ||
@@ -146,6 +163,17 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
         name.endsWith('.jpeg') ||
         name.endsWith('.webp') ||
         name.endsWith('.gif');
+  }
+
+  bool get _isVideoFile {
+    final type = widget.file.fileType.toLowerCase();
+    final name = widget.file.name.toLowerCase();
+    return type.startsWith('video/') ||
+        name.endsWith('.mp4') ||
+        name.endsWith('.mov') ||
+        name.endsWith('.mkv') ||
+        name.endsWith('.webm') ||
+        name.endsWith('.avi');
   }
 
   @override
