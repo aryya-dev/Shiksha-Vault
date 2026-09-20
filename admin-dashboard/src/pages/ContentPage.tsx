@@ -14,11 +14,14 @@ import {
   RefreshCw,
   Layers,
   Video,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Loader2
 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatUserError } from '../lib/errorHandler'
 import type { Subject, Folder, FileItem, Batch } from '../types/database'
+import { UploadProgressWidget } from '../components/UploadProgressWidget'
+import { uploadToStorageWithProgress, type UploadTask } from '../lib/storageUpload'
 
 export const ContentPage: React.FC = () => {
   const [batches, setBatches] = useState<Batch[]>([])
@@ -36,6 +39,20 @@ export const ContentPage: React.FC = () => {
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [replacingFile, setReplacingFile] = useState<FileItem | null>(null)
+
+  // Upload progress tracking state
+  const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([])
+  const [isReplacing, setIsReplacing] = useState(false)
+  const abortControllersRef = useRef<{ [taskId: string]: AbortController }>({})
+
+  const isAnyUploading = uploadTasks.some(
+    (t) => t.status === 'uploading' || t.status === 'saving' || t.status === 'pending'
+  )
+
+  const handleCancelUploads = () => {
+    Object.values(abortControllersRef.current).forEach((ctrl) => ctrl.abort())
+    abortControllersRef.current = {}
+  }
 
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const replaceInputRef = useRef<HTMLInputElement>(null)
@@ -319,39 +336,89 @@ export const ContentPage: React.FC = () => {
     setFolders(updated)
   }
 
-  // Multi-format file upload (PDF, MP4, Images)
+  // Multi-format file upload with real-time byte-level progress bar (PDF, MP4, Images)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = e.target.files
     if (!uploadedFiles || uploadedFiles.length === 0 || !currentFolderId || !selectedBatch) return
     if (!isDirectBatch && !selectedSubject) return
 
-    setIsLoading(true)
-    try {
-      const newFiles: FileItem[] = []
+    const fileList = Array.from(uploadedFiles)
+    const initialTasks: UploadTask[] = fileList.map((file, idx) => ({
+      id: `upload-${Date.now()}-${idx}`,
+      name: file.name,
+      file,
+      fileType: deriveFileType(file),
+      fileSize: file.size,
+      progress: 0,
+      loadedBytes: 0,
+      totalBytes: file.size,
+      status: 'pending'
+    }))
 
-      for (let i = 0; i < uploadedFiles.length; i++) {
-        const file = uploadedFiles[i]
-        const fileType = deriveFileType(file)
-        const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-        const subjectFolderSegment = isDirectBatch ? 'foundation' : (selectedSubject?.slug || 'general')
-        const storagePath = `${selectedBatch.id}/${subjectFolderSegment}/${currentFolderId}/${Date.now()}-${sanitizedFileName}`
+    setIsReplacing(false)
+    setUploadTasks(initialTasks)
+
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = ''
+    }
+
+    const abortControllers: { [key: string]: AbortController } = {}
+    abortControllersRef.current = abortControllers
+
+    // Upload files sequentially with progress reporting
+    for (let i = 0; i < initialTasks.length; i++) {
+      const task = initialTasks[i]
+      const file = task.file
+      const fileType = task.fileType
+      const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const subjectFolderSegment = isDirectBatch ? 'foundation' : (selectedSubject?.slug || 'general')
+      const storagePath = `${selectedBatch.id}/${subjectFolderSegment}/${currentFolderId}/${Date.now()}-${sanitizedFileName}`
+
+      const controller = new AbortController()
+      abortControllers[task.id] = controller
+
+      // Set task to uploading
+      setUploadTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, status: 'uploading' } : t))
+      )
+
+      try {
+        const { error: storageError } = await uploadToStorageWithProgress(
+          'course-materials',
+          storagePath,
+          file,
+          {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: fileType,
+            signal: controller.signal,
+            onProgress: (prog) => {
+              setUploadTasks((prev) =>
+                prev.map((t) =>
+                  t.id === task.id
+                    ? {
+                        ...t,
+                        progress: prog.percent,
+                        loadedBytes: prog.loaded,
+                        totalBytes: prog.total,
+                        bytesPerSecond: prog.bytesPerSecond,
+                        estimatedSecondsRemaining: prog.estimatedSecondsRemaining
+                      }
+                    : t
+                )
+              )
+            }
+          }
+        )
+
+        if (storageError) throw storageError
+
+        // Mark as saving metadata to database
+        setUploadTasks((prev) =>
+          prev.map((t) => (t.id === task.id ? { ...t, status: 'saving', progress: 100 } : t))
+        )
 
         if (isSupabaseConfigured()) {
-          // 1. Upload binary file to Supabase Storage 'course-materials'
-          const { error: storageError } = await supabase.storage
-            .from('course-materials')
-            .upload(storagePath, file, {
-              cacheControl: '3600',
-              upsert: false,
-              contentType: fileType
-            })
-
-          if (storageError) {
-            console.error('Storage upload error:', storageError)
-            throw storageError
-          }
-
-          // 2. Insert metadata record in public.files
           const { data, error: dbError } = await supabase
             .from('files')
             .insert({
@@ -367,9 +434,11 @@ export const ContentPage: React.FC = () => {
             .single()
 
           if (dbError) throw dbError
-          if (data) newFiles.push(data)
+          if (data) {
+            setFiles((prev) => [...prev, data])
+          }
         } else {
-          newFiles.push({
+          const mockFile: FileItem = {
             id: `file-${Date.now()}-${i}`,
             folder_id: currentFolderId,
             name: file.name,
@@ -381,48 +450,113 @@ export const ContentPage: React.FC = () => {
             uploaded_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             is_deleted: false
-          })
+          }
+          setFiles((prev) => [...prev, mockFile])
         }
-      }
 
-      setFiles((prev) => [...prev, ...newFiles])
-      alert(`Successfully uploaded ${newFiles.length} file(s) to "${activeFolder?.name}".`)
-    } catch (err: any) {
-      alert(formatUserError(err, 'Upload'))
-    } finally {
-      setIsLoading(false)
-      if (uploadInputRef.current) {
-        uploadInputRef.current.value = ''
+        // Mark task as fully completed
+        setUploadTasks((prev) =>
+          prev.map((t) =>
+            t.id === task.id
+              ? {
+                  ...t,
+                  status: 'completed',
+                  progress: 100,
+                  loadedBytes: task.fileSize,
+                  bytesPerSecond: 0,
+                  estimatedSecondsRemaining: 0
+                }
+              : t
+          )
+        )
+      } catch (err: any) {
+        const isAborted = err.name === 'AbortError' || err.message?.includes('aborted')
+        setUploadTasks((prev) =>
+          prev.map((t) =>
+            t.id === task.id
+              ? {
+                  ...t,
+                  status: isAborted ? 'aborted' : 'error',
+                  errorMessage: isAborted ? 'Upload cancelled' : formatUserError(err, 'Upload failed')
+                }
+              : t
+          )
+        )
+        if (isAborted) break
       }
     }
   }
 
+  // File replacement with real-time progress bar
   const handleReplaceFileVersion = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !replacingFile || !selectedBatch || !selectedSubject) return
+    if (!file || !replacingFile || !selectedBatch) return
+    if (!isDirectBatch && !selectedSubject) return
 
-    setIsLoading(true)
+    const bumpedVersion = replacingFile.version + 1
+    const fileType = deriveFileType(file)
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const subjectFolderSegment = isDirectBatch ? 'foundation' : (selectedSubject?.slug || 'general')
+    const storagePath = `${selectedBatch.id}/${subjectFolderSegment}/${replacingFile.folder_id}/${replacingFile.id}-v${bumpedVersion}-${sanitizedFileName}`
+
+    const task: UploadTask = {
+      id: `replace-${Date.now()}`,
+      name: `${file.name} (v${bumpedVersion})`,
+      file,
+      fileType,
+      fileSize: file.size,
+      progress: 0,
+      loadedBytes: 0,
+      totalBytes: file.size,
+      status: 'uploading'
+    }
+
+    setIsReplacing(true)
+    setUploadTasks([task])
+
+    if (replaceInputRef.current) {
+      replaceInputRef.current.value = ''
+    }
+
+    const controller = new AbortController()
+    abortControllersRef.current = { [task.id]: controller }
+
     try {
-      const bumpedVersion = replacingFile.version + 1
-      const fileType = deriveFileType(file)
-      const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const storagePath = `${selectedBatch.id}/${selectedSubject.slug}/${replacingFile.folder_id}/${replacingFile.id}-v${bumpedVersion}-${sanitizedFileName}`
+      const { error: storageError } = await uploadToStorageWithProgress(
+        'course-materials',
+        storagePath,
+        file,
+        {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: fileType,
+          signal: controller.signal,
+          onProgress: (prog) => {
+            setUploadTasks((prev) =>
+              prev.map((t) =>
+                t.id === task.id
+                  ? {
+                      ...t,
+                      progress: prog.percent,
+                      loadedBytes: prog.loaded,
+                      totalBytes: prog.total,
+                      bytesPerSecond: prog.bytesPerSecond,
+                      estimatedSecondsRemaining: prog.estimatedSecondsRemaining
+                    }
+                  : t
+              )
+            )
+          }
+        }
+      )
+
+      if (storageError) throw storageError
+
+      setUploadTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, status: 'saving', progress: 100 } : t))
+      )
 
       if (isSupabaseConfigured()) {
-        // 1. Upload replacement binary to Supabase Storage 'course-materials'
-        const { error: storageError } = await supabase.storage
-          .from('course-materials')
-          .upload(storagePath, file, {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: fileType
-          })
-
-        if (storageError) {
-          throw storageError
-        }
-
-        // 2. Update database record with new version and storage path
         const { data, error: dbError } = await supabase
           .from('files')
           .update({
@@ -454,15 +588,34 @@ export const ContentPage: React.FC = () => {
         setFiles((prev) => prev.map((f) => (f.id === replacingFile.id ? updatedFile : f)))
       }
 
+      setUploadTasks((prev) =>
+        prev.map((t) =>
+          t.id === task.id
+            ? {
+                ...t,
+                status: 'completed',
+                progress: 100,
+                loadedBytes: task.fileSize,
+                bytesPerSecond: 0,
+                estimatedSecondsRemaining: 0
+              }
+            : t
+        )
+      )
       setReplacingFile(null)
-      alert(`File replaced successfully! Version bumped to v${bumpedVersion}.`)
     } catch (err: any) {
-      alert(formatUserError(err, 'File replacement'))
-    } finally {
-      setIsLoading(false)
-      if (replaceInputRef.current) {
-        replaceInputRef.current.value = ''
-      }
+      const isAborted = err.name === 'AbortError' || err.message?.includes('aborted')
+      setUploadTasks((prev) =>
+        prev.map((t) =>
+          t.id === task.id
+            ? {
+                ...t,
+                status: isAborted ? 'aborted' : 'error',
+                errorMessage: isAborted ? 'Replacement cancelled' : formatUserError(err, 'File replacement failed')
+              }
+            : t
+        )
+      )
     }
   }
 
@@ -515,9 +668,22 @@ export const ContentPage: React.FC = () => {
                   style={{ display: 'none' }}
                   onChange={handleFileUpload}
                 />
-                <button className="btn-primary" onClick={() => uploadInputRef.current?.click()}>
-                  <Upload size={16} />
-                  Upload Materials
+                <button 
+                  className="btn-primary" 
+                  onClick={() => uploadInputRef.current?.click()}
+                  disabled={isAnyUploading}
+                >
+                  {isAnyUploading ? (
+                    <>
+                      <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={16} />
+                      Upload Materials
+                    </>
+                  )}
                 </button>
               </>
             )}
@@ -903,9 +1069,19 @@ export const ContentPage: React.FC = () => {
                   className="btn-primary"
                   style={{ padding: '4px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                   onClick={() => uploadInputRef.current?.click()}
+                  disabled={isAnyUploading}
                 >
-                  <Upload size={13} />
-                  Upload Materials
+                  {isAnyUploading ? (
+                    <>
+                      <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={13} />
+                      Upload Materials
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -1075,6 +1251,14 @@ export const ContentPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Floating Real-Time Upload Progress Card */}
+      <UploadProgressWidget
+        tasks={uploadTasks}
+        onCancelAll={handleCancelUploads}
+        onDismiss={() => setUploadTasks([])}
+        isReplacing={isReplacing}
+      />
     </div>
   )
 }
