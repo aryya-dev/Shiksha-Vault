@@ -166,12 +166,81 @@ serve(async (req: Request) => {
     const isAdmin = Boolean(adminUser)
 
     if (!isAdmin) {
-      const { data: hasAccess, error: accessError } = await supabase.rpc(
-        "can_student_access_file",
-        { p_student_id: user.id, p_file_id: file.id }
-      )
+      let hasAccess = false
 
-      if (accessError || !hasAccess) {
+      // 3a. Try RPC first
+      try {
+        const { data: rpcAccess, error: accessError } = await supabase.rpc(
+          "can_student_access_file",
+          { p_student_id: user.id, p_file_id: file.id }
+        )
+
+        if (!accessError && typeof rpcAccess === "boolean") {
+          hasAccess = rpcAccess
+        } else if (accessError) {
+          console.warn("[stream-material] RPC can_student_access_file failed, falling back to direct check:", accessError.message)
+        }
+      } catch (rpcErr) {
+        console.warn("[stream-material] RPC exception, falling back:", rpcErr)
+      }
+
+      // 3b. Fallback direct permission check if RPC failed or had schema error
+      if (!hasAccess) {
+        const { data: folder } = await supabase
+          .from("folders")
+          .select("id, batch_id, subject_id, is_deleted")
+          .eq("id", file.folder_id)
+          .maybeSingle()
+
+        const { data: student } = await supabase
+          .from("students")
+          .select("id, batch_id, is_active")
+          .eq("id", user.id)
+          .maybeSingle()
+
+        if (folder && !folder.is_deleted && student && student.is_active) {
+          let batchMatches = false
+          if (!folder.batch_id || folder.batch_id === student.batch_id) {
+            batchMatches = true
+          } else {
+            // Check student_batches for secondary batch enrollment
+            const { data: secBatch } = await supabase
+              .from("student_batches")
+              .select("batch_id")
+              .eq("student_id", user.id)
+              .eq("batch_id", folder.batch_id)
+              .maybeSingle()
+            if (secBatch) batchMatches = true
+          }
+
+          if (batchMatches) {
+            if (!folder.subject_id) {
+              hasAccess = true
+            } else {
+              // Foundation batch check
+              const { data: batch } = await supabase
+                .from("batches")
+                .select("id, board, name")
+                .eq("id", folder.batch_id)
+                .maybeSingle()
+
+              if (batch && (batch.board === "Foundation" || (batch.name && batch.name.toLowerCase().includes("foundation")))) {
+                hasAccess = true
+              } else {
+                const { data: subj } = await supabase
+                  .from("student_subjects")
+                  .select("subject_id")
+                  .eq("student_id", user.id)
+                  .eq("subject_id", folder.subject_id)
+                  .maybeSingle()
+                if (subj) hasAccess = true
+              }
+            }
+          }
+        }
+      }
+
+      if (!hasAccess) {
         return new Response(
           JSON.stringify({ error: "Access denied: You are not enrolled in this material's batch" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -199,7 +268,7 @@ serve(async (req: Request) => {
       const serviceAccount: ServiceAccountKey = JSON.parse(serviceAccountJson)
       const accessToken = await getGoogleDriveAccessToken(serviceAccount)
 
-      // Forward HTTP Range header for video seeking
+      // Forward HTTP Range header for smooth video seeking & partial byte streaming
       const rangeHeader = req.headers.get("Range")
       const driveHeaders: Record<string, string> = {
         Authorization: `Bearer ${accessToken}`,
@@ -208,11 +277,12 @@ serve(async (req: Request) => {
         driveHeaders["Range"] = rangeHeader
       }
 
-      const driveUrl = `https://www.googleapis.com/drive/v3/files/${file.gdrive_file_id}?alt=media`
+      const driveUrl = `https://www.googleapis.com/drive/v3/files/${file.gdrive_file_id}?alt=media&supportsAllDrives=true&acknowledgeAbuse=true`
       const driveRes = await fetch(driveUrl, { headers: driveHeaders })
 
       if (!driveRes.ok && driveRes.status !== 206) {
         const errorBody = await driveRes.text()
+        console.error("[stream-material] Google Drive fetch failed:", driveRes.status, errorBody)
         return new Response(JSON.stringify({ error: `Google Drive error: ${errorBody}` }), {
           status: driveRes.status,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -220,7 +290,19 @@ serve(async (req: Request) => {
       }
 
       const responseHeaders = new Headers(corsHeaders)
-      responseHeaders.set("Content-Type", driveRes.headers.get("Content-Type") || file.file_type || "application/octet-stream")
+
+      // Ensure explicit video/pdf MIME type so mobile players (ExoPlayer) parse container correctly
+      let contentType = driveRes.headers.get("Content-Type") || file.file_type || "application/octet-stream"
+      const lowerName = (file.name || "").toLowerCase()
+      if (lowerName.endsWith(".mp4") || contentType.includes("mp4")) {
+        contentType = "video/mp4"
+      } else if (lowerName.endsWith(".mkv") || contentType.includes("matroska")) {
+        contentType = "video/x-matroska"
+      } else if (lowerName.endsWith(".pdf") || contentType.includes("pdf")) {
+        contentType = "application/pdf"
+      }
+
+      responseHeaders.set("Content-Type", contentType)
       
       const contentLength = driveRes.headers.get("Content-Length")
       if (contentLength) responseHeaders.set("Content-Length", contentLength)
@@ -237,7 +319,7 @@ serve(async (req: Request) => {
       })
     }
 
-    // 5. Fallback for files stored in Supabase storage
+    // 5. Fallback for files stored in Supabase storage (proxy directly with range support)
     const { data: signedData, error: signError } = await supabase.storage
       .from("course-materials")
       .createSignedUrl(file.storage_path, 3600)
@@ -249,11 +331,38 @@ serve(async (req: Request) => {
       })
     }
 
-    return Response.redirect(signedData.signedUrl, 302)
+    const rangeHeader = req.headers.get("Range")
+    const storageHeaders: Record<string, string> = {}
+    if (rangeHeader) storageHeaders["Range"] = rangeHeader
+
+    const storageRes = await fetch(signedData.signedUrl, { headers: storageHeaders })
+    const responseHeaders = new Headers(corsHeaders)
+
+    let contentType = storageRes.headers.get("Content-Type") || file.file_type || "application/octet-stream"
+    const lowerName = (file.name || "").toLowerCase()
+    if (lowerName.endsWith(".mp4") || contentType.includes("mp4")) {
+      contentType = "video/mp4"
+    } else if (lowerName.endsWith(".pdf") || contentType.includes("pdf")) {
+      contentType = "application/pdf"
+    }
+
+    responseHeaders.set("Content-Type", contentType)
+    const cl = storageRes.headers.get("Content-Length")
+    if (cl) responseHeaders.set("Content-Length", cl)
+    const cr = storageRes.headers.get("Content-Range")
+    if (cr) responseHeaders.set("Content-Range", cr)
+    responseHeaders.set("Accept-Ranges", "bytes")
+
+    return new Response(storageRes.body, {
+      status: storageRes.status,
+      headers: responseHeaders,
+    })
   } catch (err: any) {
+    console.error("[stream-material] Uncaught error:", err)
     return new Response(JSON.stringify({ error: err.message || "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
 })
+

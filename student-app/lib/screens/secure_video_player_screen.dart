@@ -67,7 +67,12 @@ class _SecureVideoPlayerScreenState extends State<SecureVideoPlayerScreen> with 
 
     try {
       // 1. Generate a secure, 1-hour signed URL from private course-materials storage or Google Drive Edge stream
-      final signedUrl = await SupabaseService.getSignedFileUrl(widget.file.storagePath, fileId: widget.file.id, expiresIn: 3600);
+      final signedUrl = await SupabaseService.getSignedFileUrl(
+        widget.file.storagePath,
+        fileId: widget.file.id,
+        storageProvider: widget.file.storageProvider,
+        expiresIn: 3600,
+      );
       if (signedUrl == null || signedUrl.isEmpty) {
         throw 'Unable to authorize secure video stream. Please check your network or permissions.';
       }
@@ -94,7 +99,14 @@ class _SecureVideoPlayerScreenState extends State<SecureVideoPlayerScreen> with 
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Could not play this video lesson.\nPlease ensure you have an active network connection and try again.';
+          final errStr = e.toString();
+          if (errStr.contains('403') || errStr.contains('Access denied')) {
+            _errorMessage = 'Access denied: You are not enrolled in the batch or subject assigned to this video lesson.';
+          } else if (errStr.contains('404') || errStr.contains('not found')) {
+            _errorMessage = 'This video file was moved or deleted by the institute administrator.';
+          } else {
+            _errorMessage = 'Could not play this video lesson.\nPlease ensure you have an active network connection and try again.';
+          }
         });
       }
     }

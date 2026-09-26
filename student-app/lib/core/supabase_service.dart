@@ -171,9 +171,18 @@ class SupabaseService {
   }
 
   /// Request short-lived streaming URL for private media/video (Supabase Storage or Google Drive Edge stream)
-  static Future<String?> getSignedFileUrl(String storagePath, {String? fileId, int expiresIn = 3600}) async {
+  static Future<String?> getSignedFileUrl(
+    String storagePath, {
+    String? fileId,
+    String storageProvider = 'supabase',
+    int expiresIn = 3600,
+  }) async {
     try {
-      if (storagePath.startsWith('gdrive:') || fileId != null) {
+      final isDrive = storageProvider == 'gdrive' ||
+          storagePath.startsWith('gdrive:') ||
+          (fileId != null && (storagePath.isEmpty || storagePath.startsWith('gdrive:')));
+
+      if (isDrive) {
         final session = client.auth.currentSession;
         final token = session?.accessToken ?? '';
         final fId = fileId ?? storagePath.replaceFirst('gdrive:', '');
@@ -194,8 +203,16 @@ class SupabaseService {
   }
 
   /// Download private PDF binary directly into memory (zero-disk anti-leak)
-  static Future<Uint8List> downloadFile(String storagePath, {String? fileId}) async {
-    if (storagePath.startsWith('gdrive:') || fileId != null) {
+  static Future<Uint8List> downloadFile(
+    String storagePath, {
+    String? fileId,
+    String storageProvider = 'supabase',
+  }) async {
+    final isDrive = storageProvider == 'gdrive' ||
+        storagePath.startsWith('gdrive:') ||
+        (fileId != null && (storagePath.isEmpty || storagePath.startsWith('gdrive:')));
+
+    if (isDrive) {
       final session = client.auth.currentSession;
       final token = session?.accessToken ?? '';
       final fId = fileId ?? storagePath.replaceFirst('gdrive:', '');

@@ -32,6 +32,7 @@ create or replace function public.can_student_access_file(p_student_id uuid, p_f
 returns boolean
 language plpgsql
 security definer
+stable
 as $$
 declare
   v_has_access boolean;
@@ -46,19 +47,21 @@ begin
       and fl.is_deleted = false
       and s.is_active = true
       and (
-        -- Primary Batch match
-        fl.batch_id = s.batch_id
+        -- Primary Batch match or folder has no batch assigned
+        fl.batch_id is null
+        or fl.batch_id = s.batch_id
         or
         -- Secondary Batch match
         exists (
-          select 1 from public.student_secondary_batches ssb
-          where ssb.student_id = p_student_id
-            and ssb.batch_id = fl.batch_id
+          select 1 from public.student_batches sb
+          where sb.student_id = p_student_id
+            and sb.batch_id = fl.batch_id
         )
       )
       and (
         -- Foundation or general batch (no subject requirement)
         fl.subject_id is null
+        or fl.batch_id in (select b.id from public.batches b where b.board = 'Foundation' or b.name ilike '%foundation%')
         or
         -- Subject enrollment match
         exists (
@@ -72,3 +75,6 @@ begin
   return coalesce(v_has_access, false);
 end;
 $$;
+
+grant execute on function public.can_student_access_file(uuid, uuid) to authenticated, anon, service_role;
+
