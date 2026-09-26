@@ -16,7 +16,7 @@ import {
 import { DownloadAppModal } from './DownloadAppModal'
 import { supabase } from '../lib/supabase'
 
-const APK_URL = 'https://hgsfflqydnnhghfvfmrc.supabase.co/storage/v1/object/public/app-release/Shiksha-Vault.apk'
+const APK_URL = 'https://hgsfflqydnnhghfvfmrc.supabase.co/storage/v1/object/public/app-release/Shiksharthi-Educational-Institute.apk'
 const QR_URL = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=8&data=${encodeURIComponent(APK_URL)}`
 
 export type TabType = 'students' | 'batches' | 'content' | 'trash' | 'logs'

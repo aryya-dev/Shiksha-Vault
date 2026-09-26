@@ -29,7 +29,7 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  const publicApkUrl = 'https://hgsfflqydnnhghfvfmrc.supabase.co/storage/v1/object/public/app-release/Shiksha-Vault.apk'
+  const publicApkUrl = 'https://hgsfflqydnnhghfvfmrc.supabase.co/storage/v1/object/public/app-release/Shiksharthi-Educational-Institute.apk'
   const displayAppName = 'Shiksharthi Educational Institute'
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=12&data=${encodeURIComponent(publicApkUrl)}`
 
@@ -80,7 +80,7 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
     try {
       const { error } = await supabase.storage
         .from('app-release')
-        .upload('Shiksha-Vault.apk', file, {
+        .upload('Shiksharthi-Educational-Institute.apk', file, {
           upsert: true,
           contentType: 'application/vnd.android.package-archive'
         })
