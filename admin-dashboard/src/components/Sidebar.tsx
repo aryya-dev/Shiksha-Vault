@@ -7,10 +7,17 @@ import {
   ShieldAlert, 
   LogOut,
   Smartphone,
-  Download
+  Download,
+  Copy,
+  Check,
+  ExternalLink,
+  QrCode
 } from 'lucide-react'
 import { DownloadAppModal } from './DownloadAppModal'
 import { supabase } from '../lib/supabase'
+
+const APK_URL = 'https://hgsfflqydnnhghfvfmrc.supabase.co/storage/v1/object/public/app-release/Shiksha-Vault.apk'
+const QR_URL = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=8&data=${encodeURIComponent(APK_URL)}`
 
 export type TabType = 'students' | 'batches' | 'content' | 'trash' | 'logs'
 
@@ -28,6 +35,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isConfigured
 }) => {
   const [showDownloadModal, setShowDownloadModal] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [apkSize, setApkSize] = useState('23.6 MB')
   const [currentUser, setCurrentUser] = useState<{
     name: string
     email: string
@@ -76,6 +85,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     loadProfile()
   }, [isConfigured])
+
+  // Fetch live APK file size on mount
+  useEffect(() => {
+    fetch(APK_URL, { method: 'HEAD' })
+      .then((res) => {
+        const len = res.headers.get('content-length')
+        if (len) setApkSize(`${(parseInt(len) / (1024 * 1024)).toFixed(1)} MB`)
+      })
+      .catch(() => {})
+  }, [])
 
   const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'students', label: 'Students Roster', icon: <Users size={18} /> },
@@ -191,63 +210,120 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Student App Release Card */}
+      {/* App Download — Inline QR + Link Card */}
       <div style={{ padding: '0 12px 12px 12px' }}>
         <div style={{
-          padding: '12px',
-          borderRadius: '10px',
-          background: 'linear-gradient(135deg, rgba(255, 179, 0, 0.12), rgba(255, 179, 0, 0.02))',
-          border: '1px solid rgba(255, 179, 0, 0.25)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px'
+          borderRadius: '12px',
+          background: 'linear-gradient(160deg, rgba(255, 179, 0, 0.1), rgba(255, 179, 0, 0.02))',
+          border: '1px solid rgba(255, 179, 0, 0.28)',
+          overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '6px',
-              backgroundColor: 'rgba(255, 179, 0, 0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--accent-primary)',
-              flexShrink: 0
-            }}>
-              <Smartphone size={16} />
+          {/* Card Header */}
+          <div style={{ padding: '10px 12px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '26px', height: '26px', borderRadius: '6px',
+                backgroundColor: 'rgba(255,179,0,0.18)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--accent-primary)', flexShrink: 0
+              }}>
+                <Smartphone size={14} />
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>Shiksharthi App</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Latest • {apkSize}</div>
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Shiksharthi App
-              </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                v1.0 • 30.7 MB Release
-              </div>
+            <button
+              onClick={() => setShowDownloadModal(true)}
+              title="Open full download panel"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '4px',
+                padding: '4px 8px',
+                backgroundColor: 'transparent',
+                border: '1px solid rgba(255,179,0,0.3)',
+                borderRadius: '5px',
+                color: 'var(--accent-primary)',
+                fontSize: '10px', fontWeight: 500,
+                cursor: 'pointer'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,179,0,0.1)')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+            >
+              <ExternalLink size={11} />
+              <span>Details</span>
+            </button>
+          </div>
+
+          {/* Live QR Code */}
+          <div style={{
+            margin: '0 12px 10px',
+            backgroundColor: '#ffffff',
+            borderRadius: '8px',
+            padding: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.25)'
+          }}>
+            <img
+              src={QR_URL}
+              alt="QR Code to download Shiksharthi Educational Institute app"
+              style={{ width: '130px', height: '130px', display: 'block', borderRadius: '4px' }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#1e293b', fontSize: '10px', fontWeight: 600 }}>
+              <QrCode size={12} style={{ color: '#0f172a' }} />
+              <span>Scan to install on Android</span>
             </div>
           </div>
-          <button
-            onClick={() => setShowDownloadModal(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              padding: '7px 10px',
-              backgroundColor: 'var(--accent-primary)',
-              color: '#000000',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'opacity 0.15s ease'
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1.0')}
-          >
-            <Download size={14} />
-            <span>Download & QR</span>
-          </button>
+
+          {/* Direct Link + Copy */}
+          <div style={{
+            margin: '0 12px 10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            backgroundColor: 'rgba(255,255,255,0.04)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            padding: '5px 8px'
+          }}>
+            <Download size={12} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+            <a
+              href={APK_URL}
+              download="Shiksharthi-Educational-Institute.apk"
+              title="Direct APK download"
+              style={{
+                flex: 1, fontSize: '10px', color: 'var(--text-secondary)',
+                fontFamily: 'monospace', whiteSpace: 'nowrap',
+                overflow: 'hidden', textOverflow: 'ellipsis',
+                textDecoration: 'none'
+              }}
+            >
+              Shiksharthi-Educational-Institute.apk
+            </a>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(APK_URL)
+                setCopiedLink(true)
+                setTimeout(() => setCopiedLink(false), 2500)
+              }}
+              title="Copy download link"
+              style={{
+                display: 'flex', alignItems: 'center',
+                padding: '3px 6px',
+                backgroundColor: copiedLink ? 'rgba(46,204,113,0.15)' : 'var(--surface)',
+                color: copiedLink ? 'var(--success)' : 'var(--text-muted)',
+                border: '1px solid var(--border)',
+                borderRadius: '4px', fontSize: '10px',
+                cursor: 'pointer', gap: '3px', flexShrink: 0
+              }}
+            >
+              {copiedLink ? <Check size={11} /> : <Copy size={11} />}
+              <span>{copiedLink ? 'Copied!' : 'Copy'}</span>
+            </button>
+          </div>
         </div>
       </div>
 

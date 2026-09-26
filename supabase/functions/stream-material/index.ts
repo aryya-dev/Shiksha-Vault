@@ -145,7 +145,7 @@ serve(async (req: Request) => {
     // 2. Fetch file record from database
     const { data: file, error: fileError } = await supabase
       .from("files")
-      .select("id, name, storage_provider, gdrive_file_id, storage_path, file_type, file_size_bytes, is_deleted")
+      .select("id, name, folder_id, storage_provider, gdrive_file_id, storage_path, file_type, file_size_bytes, is_deleted")
       .eq("id", fileId)
       .single()
 
@@ -311,7 +311,7 @@ serve(async (req: Request) => {
       if (contentRange) responseHeaders.set("Content-Range", contentRange)
 
       responseHeaders.set("Accept-Ranges", "bytes")
-      responseHeaders.set("Cache-Control", "private, no-cache, no-store, must-revalidate")
+      responseHeaders.set("Cache-Control", "private, max-age=300")
 
       return new Response(driveRes.body, {
         status: driveRes.status, // 200 or 206 Partial Content

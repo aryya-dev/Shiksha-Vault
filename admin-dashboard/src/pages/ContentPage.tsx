@@ -17,13 +17,15 @@ import {
   Image as ImageIcon,
   Loader2,
   HardDrive,
-  Eye
+  Eye,
+  QrCode
 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatUserError } from '../lib/errorHandler'
 import type { Subject, Folder, FileItem, Batch } from '../types/database'
 import { UploadProgressWidget } from '../components/UploadProgressWidget'
 import { AddDriveLinkModal } from '../components/AddDriveLinkModal'
+import { MaterialQrModal } from '../components/MaterialQrModal'
 import { uploadToStorageWithProgress, type UploadTask } from '../lib/storageUpload'
 
 export const ContentPage: React.FC = () => {
@@ -44,6 +46,7 @@ export const ContentPage: React.FC = () => {
   const [newFolderName, setNewFolderName] = useState('')
   const [replacingFile, setReplacingFile] = useState<FileItem | null>(null)
   const [driveFileToReplace, setDriveFileToReplace] = useState<FileItem | null>(null)
+  const [qrFile, setQrFile] = useState<FileItem | null>(null)
 
   // Upload progress tracking state
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([])
@@ -1208,6 +1211,14 @@ export const ContentPage: React.FC = () => {
                                   <Eye size={14} />
                                 </button>
                                 <button
+                                  title="Display QR Code / Share Material"
+                                  className="btn-secondary"
+                                  style={{ padding: '6px 8px', fontSize: '12px', color: 'var(--accent-primary)' }}
+                                  onClick={() => setQrFile(file)}
+                                >
+                                  <QrCode size={14} />
+                                </button>
+                                <button
                                   title="Replace / Update Material Version"
                                   className="btn-secondary"
                                   style={{ padding: '6px 8px', fontSize: '12px' }}
@@ -1362,6 +1373,13 @@ export const ContentPage: React.FC = () => {
           }
         />
       )}
+
+      {/* Study Material QR Code Modal */}
+      <MaterialQrModal
+        isOpen={Boolean(qrFile)}
+        onClose={() => setQrFile(null)}
+        file={qrFile}
+      />
     </div>
   )
 }
