@@ -16,7 +16,8 @@ import {
   Video,
   Image as ImageIcon,
   Loader2,
-  HardDrive
+  HardDrive,
+  Eye
 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatUserError } from '../lib/errorHandler'
@@ -42,6 +43,7 @@ export const ContentPage: React.FC = () => {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [replacingFile, setReplacingFile] = useState<FileItem | null>(null)
+  const [driveFileToReplace, setDriveFileToReplace] = useState<FileItem | null>(null)
 
   // Upload progress tracking state
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([])
@@ -312,6 +314,28 @@ export const ContentPage: React.FC = () => {
       setFiles(files.filter((f) => f.id !== fileId))
     } catch (err: any) {
       alert(formatUserError(err, 'Failed to move file to trash'))
+    }
+  }
+
+  // Open / preview material for admin verification
+  const handlePreviewFile = async (file: FileItem) => {
+    if (file.storage_provider === 'gdrive' && file.gdrive_file_id) {
+      window.open(`https://drive.google.com/file/d/${file.gdrive_file_id}/view`, '_blank')
+      return
+    }
+
+    if (isSupabaseConfigured() && file.storage_path) {
+      try {
+        const { data, error } = await supabase.storage
+          .from('course-materials')
+          .createSignedUrl(file.storage_path, 3600)
+        if (error) throw error
+        if (data?.signedUrl) {
+          window.open(data.signedUrl, '_blank')
+        }
+      } catch (err: any) {
+        alert(formatUserError(err, 'Unable to preview file'))
+      }
     }
   }
 
@@ -1176,12 +1200,25 @@ export const ContentPage: React.FC = () => {
                             <td style={{ textAlign: 'right' }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                                 <button
-                                  title="Replace with new version (bump version)"
+                                  title="Open / Preview Material"
+                                  className="btn-secondary"
+                                  style={{ padding: '6px 8px', fontSize: '12px' }}
+                                  onClick={() => handlePreviewFile(file)}
+                                >
+                                  <Eye size={14} />
+                                </button>
+                                <button
+                                  title="Replace / Update Material Version"
                                   className="btn-secondary"
                                   style={{ padding: '6px 8px', fontSize: '12px' }}
                                   onClick={() => {
-                                    setReplacingFile(file)
-                                    replaceInputRef.current?.click()
+                                    if (file.storage_provider === 'gdrive') {
+                                      setDriveFileToReplace(file)
+                                      setIsDriveModalOpen(true)
+                                    } else {
+                                      setReplacingFile(file)
+                                      replaceInputRef.current?.click()
+                                    }
                                   }}
                                 >
                                   <RefreshCw size={14} />
@@ -1212,17 +1249,27 @@ export const ContentPage: React.FC = () => {
                     borderStyle: 'dashed'
                   }}
                 >
-                  <p style={{ marginBottom: '12px' }}>
+                  <p style={{ marginBottom: '14px' }}>
                     No materials uploaded to "{activeFolder?.name}" yet.
                   </p>
-                  <button 
-                    className="btn-primary" 
-                    onClick={() => uploadInputRef.current?.click()}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                  >
-                    <Upload size={15} />
-                    Upload PDF Notes, MP4 Videos, or Images
-                  </button>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <button 
+                      className="btn-secondary" 
+                      onClick={() => setIsDriveModalOpen(true)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <HardDrive size={15} style={{ color: '#60A5FA' }} />
+                      Link from Google Drive
+                    </button>
+                    <button 
+                      className="btn-primary" 
+                      onClick={() => uploadInputRef.current?.click()}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <Upload size={15} />
+                      Upload Directly
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1302,10 +1349,17 @@ export const ContentPage: React.FC = () => {
       {currentFolderId && (
         <AddDriveLinkModal
           isOpen={isDriveModalOpen}
-          onClose={() => setIsDriveModalOpen(false)}
+          onClose={() => {
+            setIsDriveModalOpen(false)
+            setDriveFileToReplace(null)
+          }}
           currentFolderId={currentFolderId}
           folderName={activeFolder?.name || ''}
+          targetFileToReplace={driveFileToReplace}
           onFileAdded={(newFile) => setFiles((prev) => [...prev, newFile])}
+          onFileUpdated={(updatedFile) =>
+            setFiles((prev) => prev.map((f) => (f.id === updatedFile.id ? updatedFile : f)))
+          }
         />
       )}
     </div>

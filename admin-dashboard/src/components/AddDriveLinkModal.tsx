@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { X, HardDrive, Video, FileText, CheckCircle2 } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { X, HardDrive, Video, FileText, CheckCircle2, RefreshCw } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatUserError } from '../lib/errorHandler'
 import type { FileItem } from '../types/database'
@@ -9,7 +9,9 @@ interface AddDriveLinkModalProps {
   onClose: () => void
   currentFolderId: string
   folderName: string
+  targetFileToReplace?: FileItem | null
   onFileAdded: (newFile: FileItem) => void
+  onFileUpdated?: (updatedFile: FileItem) => void
 }
 
 export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
@@ -17,7 +19,9 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
   onClose,
   currentFolderId,
   folderName,
-  onFileAdded
+  targetFileToReplace,
+  onFileAdded,
+  onFileUpdated
 }) => {
   const [driveUrl, setDriveUrl] = useState('')
   const [fileName, setFileName] = useState('')
@@ -25,6 +29,35 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
   const [sizeMb, setSizeMb] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [extractedId, setExtractedId] = useState('')
+
+  useEffect(() => {
+    if (targetFileToReplace) {
+      setFileName(targetFileToReplace.name)
+      setFileType(
+        targetFileToReplace.file_type.toLowerCase().startsWith('video')
+          ? 'video/mp4'
+          : 'application/pdf'
+      )
+      if (targetFileToReplace.gdrive_file_id) {
+        setDriveUrl(`https://drive.google.com/file/d/${targetFileToReplace.gdrive_file_id}/view`)
+        setExtractedId(targetFileToReplace.gdrive_file_id)
+      } else {
+        setDriveUrl('')
+        setExtractedId('')
+      }
+      if (targetFileToReplace.file_size_bytes) {
+        setSizeMb((targetFileToReplace.file_size_bytes / (1024 * 1024)).toFixed(1))
+      } else {
+        setSizeMb('')
+      }
+    } else {
+      setDriveUrl('')
+      setFileName('')
+      setFileType('video/mp4')
+      setSizeMb('')
+      setExtractedId('')
+    }
+  }, [targetFileToReplace, isOpen])
 
   if (!isOpen) return null
 
@@ -39,7 +72,7 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
     const matchId = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/)
     if (matchId) return matchId[1]
 
-    // Pattern 3: raw file ID
+    // Pattern 3: raw file ID (alphanumeric + _ - with length >= 20)
     if (/^[a-zA-Z0-9_-]{20,}$/.test(trimmed)) return trimmed
 
     return ''
@@ -76,42 +109,82 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
     const sizeBytes = sizeMb ? Math.round(parseFloat(sizeMb) * 1024 * 1024) : null
 
     try {
-      if (isSupabaseConfigured()) {
-        const { data, error } = await supabase
-          .from('files')
-          .insert({
+      if (targetFileToReplace) {
+        // REPLACE / BUMP VERSION
+        const nextVersion = targetFileToReplace.version + 1
+
+        if (isSupabaseConfigured()) {
+          const { data, error } = await supabase
+            .from('files')
+            .update({
+              name: fileName.trim(),
+              storage_path: `gdrive:${id}`,
+              storage_provider: 'gdrive',
+              gdrive_file_id: id,
+              version: nextVersion,
+              file_size_bytes: sizeBytes,
+              file_type: fileType,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', targetFileToReplace.id)
+            .select()
+            .single()
+
+          if (error) throw error
+          if (data && onFileUpdated) onFileUpdated(data)
+        } else {
+          const updated: FileItem = {
+            ...targetFileToReplace,
+            name: fileName.trim(),
+            storage_path: `gdrive:${id}`,
+            storage_provider: 'gdrive',
+            gdrive_file_id: id,
+            version: nextVersion,
+            file_size_bytes: sizeBytes,
+            file_type: fileType,
+            updated_at: new Date().toISOString()
+          }
+          if (onFileUpdated) onFileUpdated(updated)
+        }
+      } else {
+        // CREATE NEW FILE IN FOLDER
+        if (isSupabaseConfigured()) {
+          const { data, error } = await supabase
+            .from('files')
+            .insert({
+              folder_id: currentFolderId,
+              name: fileName.trim(),
+              storage_path: `gdrive:${id}`,
+              storage_provider: 'gdrive',
+              gdrive_file_id: id,
+              version: 1,
+              file_size_bytes: sizeBytes,
+              file_type: fileType,
+              is_deleted: false
+            })
+            .select()
+            .single()
+
+          if (error) throw error
+          if (data) onFileAdded(data)
+        } else {
+          const mockFile: FileItem = {
+            id: `file-gdrive-${Date.now()}`,
             folder_id: currentFolderId,
             name: fileName.trim(),
             storage_path: `gdrive:${id}`,
             storage_provider: 'gdrive',
             gdrive_file_id: id,
             version: 1,
+            uploaded_by: null,
             file_size_bytes: sizeBytes,
             file_type: fileType,
+            uploaded_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
             is_deleted: false
-          })
-          .select()
-          .single()
-
-        if (error) throw error
-        if (data) onFileAdded(data)
-      } else {
-        const mockFile: FileItem = {
-          id: `file-gdrive-${Date.now()}`,
-          folder_id: currentFolderId,
-          name: fileName.trim(),
-          storage_path: `gdrive:${id}`,
-          storage_provider: 'gdrive',
-          gdrive_file_id: id,
-          version: 1,
-          uploaded_by: null,
-          file_size_bytes: sizeBytes,
-          file_type: fileType,
-          uploaded_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          is_deleted: false
+          }
+          onFileAdded(mockFile)
         }
-        onFileAdded(mockFile)
       }
 
       setDriveUrl('')
@@ -120,7 +193,7 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
       setExtractedId('')
       onClose()
     } catch (err: any) {
-      alert(formatUserError(err, 'Failed to link Google Drive file'))
+      alert(formatUserError(err, 'Failed to save Google Drive material'))
     } finally {
       setIsSubmitting(false)
     }
@@ -168,14 +241,16 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
                 color: '#60A5FA'
               }}
             >
-              <HardDrive size={20} />
+              {targetFileToReplace ? <RefreshCw size={20} /> : <HardDrive size={20} />}
             </div>
             <div>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Link from Google Drive
+                {targetFileToReplace ? 'Update / Replace Material Link' : 'Link from Google Drive'}
               </h3>
               <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                Folder: <span style={{ color: 'var(--text-primary)' }}>{folderName}</span>
+                {targetFileToReplace
+                  ? `Updating version v${targetFileToReplace.version} → v${targetFileToReplace.version + 1}`
+                  : `Folder: ${folderName}`}
               </p>
             </div>
           </div>
@@ -309,7 +384,11 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={isSubmitting || !extractedId || !fileName.trim()}>
-              {isSubmitting ? 'Linking...' : 'Add Material to Folder'}
+              {isSubmitting
+                ? 'Saving...'
+                : targetFileToReplace
+                ? 'Update Version'
+                : 'Add Material to Folder'}
             </button>
           </div>
         </form>

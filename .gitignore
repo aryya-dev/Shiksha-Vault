@@ -32,5 +32,7 @@ hs_err_pid*.log
 *.iml
 *.ipr
 *.iws
-.DS_Store
-Thumbs.db
+# Supabase CLI temp
+.temp/
+supabase/.temp/
+
