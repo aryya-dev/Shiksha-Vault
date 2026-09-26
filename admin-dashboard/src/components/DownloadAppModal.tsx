@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { 
   Download, 
   QrCode, 
@@ -98,7 +99,7 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
     }
   }
 
-  return (
+  return createPortal(
     <div
       style={{
         position: 'fixed',
@@ -413,5 +414,5 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
         </div>
       </div>
     </div>
-  )
+  , document.body)
 }

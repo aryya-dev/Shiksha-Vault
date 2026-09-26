@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { QrCode, Copy, Check, X, ExternalLink, FileText, Video, Image as ImageIcon, Printer } from 'lucide-react'
 import type { FileItem } from '../types/database'
 import { supabaseUrl } from '../lib/supabase'
@@ -88,7 +89,7 @@ export function MaterialQrModal({ isOpen, onClose, file }: MaterialQrModalProps)
   const isVideo = file.file_type?.startsWith('video') || file.name.toLowerCase().endsWith('.mp4')
   const isImage = file.file_type?.startsWith('image') || file.name.toLowerCase().match(/\.(jpg|jpeg|png|webp)$/)
 
-  return (
+  return createPortal(
     <div
       style={{
         position: 'fixed',
@@ -313,5 +314,5 @@ export function MaterialQrModal({ isOpen, onClose, file }: MaterialQrModalProps)
         </div>
       </div>
     </div>
-  )
+  , document.body)
 }
