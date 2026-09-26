@@ -8,7 +8,6 @@ import {
   X, 
   Smartphone, 
   ShieldCheck, 
-  RefreshCw, 
   Upload, 
   CheckCircle2, 
   Sparkles,
@@ -30,7 +29,6 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   const publicApkUrl = 'https://hgsfflqydnnhghfvfmrc.supabase.co/storage/v1/object/public/app-release/Shiksharthi-Educational-Institute.apk'
-  const displayAppName = 'Shiksharthi Educational Institute'
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=12&data=${encodeURIComponent(publicApkUrl)}`
 
   // Fetch live metadata of the public APK file
