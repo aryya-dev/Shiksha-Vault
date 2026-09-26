@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/subject.dart';
@@ -169,9 +170,19 @@ class SupabaseService {
     return (response as List).map((e) => FileItemModel.fromJson(e)).toList();
   }
 
-  /// Request short-lived signed URL for private storage media/video
-  static Future<String?> getSignedFileUrl(String storagePath, {int expiresIn = 3600}) async {
+  /// Request short-lived streaming URL for private media/video (Supabase Storage or Google Drive Edge stream)
+  static Future<String?> getSignedFileUrl(String storagePath, {String? fileId, int expiresIn = 3600}) async {
     try {
+      if (storagePath.startsWith('gdrive:') || fileId != null) {
+        final session = client.auth.currentSession;
+        final token = session?.accessToken ?? '';
+        final fId = fileId ?? storagePath.replaceFirst('gdrive:', '');
+        final baseUrl = client.rest.url.replaceAll('/rest/v1', '');
+        
+        // Edge function streaming URL with ephemeral bearer token for secure video player seeking
+        return '$baseUrl/functions/v1/stream-material?file_id=$fId&token=$token';
+      }
+
       final signedUrl = await client.storage
           .from('course-materials')
           .createSignedUrl(storagePath, expiresIn); // Defaults to 1 hour ephemeral streaming access
@@ -182,8 +193,31 @@ class SupabaseService {
     }
   }
 
-  /// Download private storage PDF binary directly into memory (zero-disk anti-leak)
-  static Future<Uint8List> downloadFile(String storagePath) async {
+  /// Download private PDF binary directly into memory (zero-disk anti-leak)
+  static Future<Uint8List> downloadFile(String storagePath, {String? fileId}) async {
+    if (storagePath.startsWith('gdrive:') || fileId != null) {
+      final session = client.auth.currentSession;
+      final token = session?.accessToken ?? '';
+      final fId = fileId ?? storagePath.replaceFirst('gdrive:', '');
+      final baseUrl = client.rest.url.replaceAll('/rest/v1', '');
+      final streamUrl = '$baseUrl/functions/v1/stream-material?file_id=$fId';
+
+      try {
+        final httpClient = HttpClient();
+        final request = await httpClient.getUrl(Uri.parse(streamUrl));
+        request.headers.set('Authorization', 'Bearer $token');
+        final response = await request.close();
+
+        if (response.statusCode == 200) {
+          return await consolidateHttpClientResponseBytes(response);
+        } else {
+          debugPrint('[SupabaseService] Stream function returned status: ${response.statusCode}');
+        }
+      } catch (e) {
+        debugPrint('[SupabaseService] Error streaming from Google Drive Edge function: $e');
+      }
+    }
+
     return await client.storage
         .from('course-materials')
         .download(storagePath);

@@ -82,7 +82,7 @@ class _SecurePdfViewerScreenState extends State<SecurePdfViewerScreen> with Widg
     });
 
     try {
-      final bytes = await SupabaseService.downloadFile(widget.file.storagePath);
+      final bytes = await SupabaseService.downloadFile(widget.file.storagePath, fileId: widget.file.id);
       if (mounted) {
         if (bytes.isNotEmpty) {
           setState(() {

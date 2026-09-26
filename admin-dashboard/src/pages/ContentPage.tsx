@@ -15,12 +15,14 @@ import {
   Layers,
   Video,
   Image as ImageIcon,
-  Loader2
+  Loader2,
+  HardDrive
 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatUserError } from '../lib/errorHandler'
 import type { Subject, Folder, FileItem, Batch } from '../types/database'
 import { UploadProgressWidget } from '../components/UploadProgressWidget'
+import { AddDriveLinkModal } from '../components/AddDriveLinkModal'
 import { uploadToStorageWithProgress, type UploadTask } from '../lib/storageUpload'
 
 export const ContentPage: React.FC = () => {
@@ -37,6 +39,7 @@ export const ContentPage: React.FC = () => {
 
   // Modals & form state
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false)
+  const [isDriveModalOpen, setIsDriveModalOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [replacingFile, setReplacingFile] = useState<FileItem | null>(null)
 
@@ -685,6 +688,15 @@ export const ContentPage: React.FC = () => {
                     </>
                   )}
                 </button>
+                <button
+                  className="btn-secondary"
+                  onClick={() => setIsDriveModalOpen(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  title="Link large videos or documents stored in Google Drive"
+                >
+                  <HardDrive size={16} style={{ color: '#60A5FA' }} />
+                  Link Drive File
+                </button>
               </>
             )}
           </div>
@@ -1065,24 +1077,35 @@ export const ContentPage: React.FC = () => {
                 <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.04em' }}>
                   DOCUMENTS & MEDIA IN "{activeFolder?.name}" ({currentFiles.length})
                 </h3>
-                <button
-                  className="btn-primary"
-                  style={{ padding: '4px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                  onClick={() => uploadInputRef.current?.click()}
-                  disabled={isAnyUploading}
-                >
-                  {isAnyUploading ? (
-                    <>
-                      <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={13} />
-                      Upload Materials
-                    </>
-                  )}
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="btn-secondary"
+                    style={{ padding: '4px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    onClick={() => setIsDriveModalOpen(true)}
+                    title="Link material stored on Google Drive"
+                  >
+                    <HardDrive size={13} style={{ color: '#60A5FA' }} />
+                    Link Drive File
+                  </button>
+                  <button
+                    className="btn-primary"
+                    style={{ padding: '4px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    onClick={() => uploadInputRef.current?.click()}
+                    disabled={isAnyUploading}
+                  >
+                    {isAnyUploading ? (
+                      <>
+                        <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={13} />
+                        Upload Materials
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {currentFiles.length > 0 ? (
@@ -1107,6 +1130,21 @@ export const ContentPage: React.FC = () => {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 {badgeInfo.icon}
                                 <span style={{ fontWeight: 500 }}>{file.name}</span>
+                                {file.storage_provider === 'gdrive' && (
+                                  <span
+                                    className="badge"
+                                    style={{
+                                      backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                      color: '#60A5FA',
+                                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                                      fontSize: '10px',
+                                      padding: '1px 6px'
+                                    }}
+                                    title="Stored securely on Google Drive"
+                                  >
+                                    Drive
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td>
@@ -1259,6 +1297,17 @@ export const ContentPage: React.FC = () => {
         onDismiss={() => setUploadTasks([])}
         isReplacing={isReplacing}
       />
+
+      {/* Link from Google Drive Modal */}
+      {currentFolderId && (
+        <AddDriveLinkModal
+          isOpen={isDriveModalOpen}
+          onClose={() => setIsDriveModalOpen(false)}
+          currentFolderId={currentFolderId}
+          folderName={activeFolder?.name || ''}
+          onFileAdded={(newFile) => setFiles((prev) => [...prev, newFile])}
+        />
+      )}
     </div>
   )
 }

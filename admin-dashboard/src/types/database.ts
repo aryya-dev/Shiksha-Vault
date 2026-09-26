@@ -77,6 +77,8 @@ export interface FileItem {
   folder_id: string
   name: string
   storage_path: string
+  storage_provider?: 'supabase' | 'gdrive'
+  gdrive_file_id?: string | null
   version: number
   uploaded_by: string | null
   file_size_bytes: number | null

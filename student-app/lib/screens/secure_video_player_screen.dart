@@ -66,8 +66,8 @@ class _SecureVideoPlayerScreenState extends State<SecureVideoPlayerScreen> with 
     });
 
     try {
-      // 1. Generate a secure, 1-hour signed URL from private course-materials storage
-      final signedUrl = await SupabaseService.getSignedFileUrl(widget.file.storagePath, expiresIn: 3600);
+      // 1. Generate a secure, 1-hour signed URL from private course-materials storage or Google Drive Edge stream
+      final signedUrl = await SupabaseService.getSignedFileUrl(widget.file.storagePath, fileId: widget.file.id, expiresIn: 3600);
       if (signedUrl == null || signedUrl.isEmpty) {
         throw 'Unable to authorize secure video stream. Please check your network or permissions.';
       }
