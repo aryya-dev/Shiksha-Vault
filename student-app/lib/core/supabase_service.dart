@@ -178,18 +178,33 @@ class SupabaseService {
     int expiresIn = 3600,
   }) async {
     try {
+      // 1. Ensure valid, non-expired session
+      var session = client.auth.currentSession;
+      if (session == null || session.isExpired) {
+        try {
+          final res = await client.auth.refreshSession();
+          session = res.session;
+        } catch (e) {
+          debugPrint('[SupabaseService] Session refresh error: $e');
+        }
+      }
+      final token = session?.accessToken ?? '';
+
       final isDrive = storageProvider == 'gdrive' ||
           storagePath.startsWith('gdrive:') ||
           (fileId != null && (storagePath.isEmpty || storagePath.startsWith('gdrive:')));
 
+      final fId = fileId ?? (storagePath.startsWith('gdrive:') ? storagePath.replaceFirst('gdrive:', '') : null);
+      final baseUrl = client.rest.url.replaceAll('/rest/v1', '');
+
+      // For any video with a fileId (Google Drive or Supabase proxy),
+      // route via stream-material/video.mp4 to ensure ExoPlayer container recognition & byte-range streaming
+      if (fId != null && fId.isNotEmpty) {
+        return '$baseUrl/functions/v1/stream-material/video.mp4?file_id=$fId&token=$token';
+      }
+
       if (isDrive) {
-        final session = client.auth.currentSession;
-        final token = session?.accessToken ?? '';
-        final fId = fileId ?? storagePath.replaceFirst('gdrive:', '');
-        final baseUrl = client.rest.url.replaceAll('/rest/v1', '');
-        
-        // Edge function streaming URL with ephemeral bearer token for secure video player seeking
-        return '$baseUrl/functions/v1/stream-material?file_id=$fId&token=$token';
+        return '$baseUrl/functions/v1/stream-material/video.mp4?file_id=$fId&token=$token';
       }
 
       final signedUrl = await client.storage
@@ -213,7 +228,15 @@ class SupabaseService {
         (fileId != null && (storagePath.isEmpty || storagePath.startsWith('gdrive:')));
 
     if (isDrive) {
-      final session = client.auth.currentSession;
+      var session = client.auth.currentSession;
+      if (session == null || session.isExpired) {
+        try {
+          final res = await client.auth.refreshSession();
+          session = res.session;
+        } catch (e) {
+          debugPrint('[SupabaseService] Session refresh error: $e');
+        }
+      }
       final token = session?.accessToken ?? '';
       final fId = fileId ?? storagePath.replaceFirst('gdrive:', '');
       final baseUrl = client.rest.url.replaceAll('/rest/v1', '');

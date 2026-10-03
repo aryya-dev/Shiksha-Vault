@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.115.0"
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, range",
+  "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, Content-Type",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
 }
 
@@ -109,7 +110,18 @@ serve(async (req: Request) => {
 
   try {
     const url = new URL(req.url)
-    const fileId = url.searchParams.get("file_id")
+    let fileId = url.searchParams.get("file_id")
+
+    // Support paths like /stream-material/:fileId or /stream-material/:fileId/video.mp4
+    if (!fileId) {
+      const parts = url.pathname.split("/").filter(Boolean)
+      for (const part of parts) {
+        if (/^[0-9a-fA-F-]{36}$/.test(part)) {
+          fileId = part
+          break
+        }
+      }
+    }
 
     if (!fileId) {
       return new Response(JSON.stringify({ error: "Missing file_id parameter" }), {
@@ -292,14 +304,19 @@ serve(async (req: Request) => {
       const responseHeaders = new Headers(corsHeaders)
 
       // Ensure explicit video/pdf MIME type so mobile players (ExoPlayer) parse container correctly
-      let contentType = driveRes.headers.get("Content-Type") || file.file_type || "application/octet-stream"
+      let contentType = "application/octet-stream"
       const lowerName = (file.name || "").toLowerCase()
-      if (lowerName.endsWith(".mp4") || contentType.includes("mp4")) {
-        contentType = "video/mp4"
-      } else if (lowerName.endsWith(".mkv") || contentType.includes("matroska")) {
-        contentType = "video/x-matroska"
-      } else if (lowerName.endsWith(".pdf") || contentType.includes("pdf")) {
+      const dbType = (file.file_type || "").toLowerCase()
+      const driveType = (driveRes.headers.get("Content-Type") || "").toLowerCase()
+
+      if (dbType.includes("mp4") || lowerName.endsWith(".mp4") || driveType.includes("mp4") || dbType.startsWith("video/")) {
+        contentType = dbType.startsWith("video/") ? dbType : "video/mp4"
+      } else if (dbType.includes("pdf") || lowerName.endsWith(".pdf") || driveType.includes("pdf") || dbType === "application/pdf") {
         contentType = "application/pdf"
+      } else if (dbType.includes("matroska") || lowerName.endsWith(".mkv") || driveType.includes("matroska")) {
+        contentType = "video/x-matroska"
+      } else if (driveType && driveType !== "application/octet-stream") {
+        contentType = driveType
       }
 
       responseHeaders.set("Content-Type", contentType)
@@ -312,6 +329,13 @@ serve(async (req: Request) => {
 
       responseHeaders.set("Accept-Ranges", "bytes")
       responseHeaders.set("Cache-Control", "private, max-age=300")
+
+      if (req.method === "HEAD") {
+        return new Response(null, {
+          status: driveRes.status,
+          headers: responseHeaders,
+        })
+      }
 
       return new Response(driveRes.body, {
         status: driveRes.status, // 200 or 206 Partial Content
@@ -338,12 +362,17 @@ serve(async (req: Request) => {
     const storageRes = await fetch(signedData.signedUrl, { headers: storageHeaders })
     const responseHeaders = new Headers(corsHeaders)
 
-    let contentType = storageRes.headers.get("Content-Type") || file.file_type || "application/octet-stream"
+    let contentType = "application/octet-stream"
     const lowerName = (file.name || "").toLowerCase()
-    if (lowerName.endsWith(".mp4") || contentType.includes("mp4")) {
-      contentType = "video/mp4"
-    } else if (lowerName.endsWith(".pdf") || contentType.includes("pdf")) {
+    const dbType = (file.file_type || "").toLowerCase()
+    const storageType = (storageRes.headers.get("Content-Type") || "").toLowerCase()
+
+    if (dbType.includes("mp4") || lowerName.endsWith(".mp4") || storageType.includes("mp4") || dbType.startsWith("video/")) {
+      contentType = dbType.startsWith("video/") ? dbType : "video/mp4"
+    } else if (dbType.includes("pdf") || lowerName.endsWith(".pdf") || storageType.includes("pdf") || dbType === "application/pdf") {
       contentType = "application/pdf"
+    } else if (storageType && storageType !== "application/octet-stream") {
+      contentType = storageType
     }
 
     responseHeaders.set("Content-Type", contentType)
@@ -352,6 +381,14 @@ serve(async (req: Request) => {
     const cr = storageRes.headers.get("Content-Range")
     if (cr) responseHeaders.set("Content-Range", cr)
     responseHeaders.set("Accept-Ranges", "bytes")
+    responseHeaders.set("Cache-Control", "private, max-age=300")
+
+    if (req.method === "HEAD") {
+      return new Response(null, {
+        status: storageRes.status,
+        headers: responseHeaders,
+      })
+    }
 
     return new Response(storageRes.body, {
       status: storageRes.status,

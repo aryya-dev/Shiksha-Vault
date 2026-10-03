@@ -77,9 +77,14 @@ class _SecureVideoPlayerScreenState extends State<SecureVideoPlayerScreen> with 
         throw 'Unable to authorize secure video stream. Please check your network or permissions.';
       }
 
-      // 2. Initialize video player with the signed streaming URL
+      final session = SupabaseService.client.auth.currentSession;
+      final token = session?.accessToken ?? '';
+
+      // 2. Initialize video player with formatHint and Authorization header
       final controller = VideoPlayerController.networkUrl(
         Uri.parse(signedUrl),
+        formatHint: VideoFormat.other,
+        httpHeaders: token.isNotEmpty ? {'Authorization': 'Bearer $token'} : const {},
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
       );
 
@@ -104,6 +109,8 @@ class _SecureVideoPlayerScreenState extends State<SecureVideoPlayerScreen> with 
             _errorMessage = 'Access denied: You are not enrolled in the batch or subject assigned to this video lesson.';
           } else if (errStr.contains('404') || errStr.contains('not found')) {
             _errorMessage = 'This video file was moved or deleted by the institute administrator.';
+          } else if (errStr.contains('401') || errStr.contains('Unauthorized')) {
+            _errorMessage = 'Session expired. Please sign out and sign back in to refresh authorization.';
           } else {
             _errorMessage = 'Could not play this video lesson.\nPlease ensure you have an active network connection and try again.';
           }
@@ -114,7 +121,15 @@ class _SecureVideoPlayerScreenState extends State<SecureVideoPlayerScreen> with 
 
   void _videoListener() {
     if (mounted) {
-      setState(() {});
+      if (_controller != null && _controller!.value.hasError) {
+        final err = _controller!.value.errorDescription;
+        debugPrint('[SecureVideoPlayer] Controller runtime error: $err');
+        setState(() {
+          _errorMessage = err ?? 'Could not play this video lesson. Please check your network or try again.';
+        });
+      } else {
+        setState(() {});
+      }
     }
   }
 

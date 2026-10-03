@@ -14,7 +14,7 @@ void main() async {
       'SUPABASE_URL',
       defaultValue: 'https://hgsfflqydnnhghfvfmrc.supabase.co',
     ),
-    anonKey: const String.fromEnvironment(
+    publishableKey: const String.fromEnvironment(
       'SUPABASE_ANON_KEY',
       defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhnc2ZmbHF5ZG5uaGdoZnZmbXJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MTc3MzksImV4cCI6MjEwNDI5MzczOX0.ODfklKhluqC9oju6W1vc0rPlo9cCSWElDpipo7cC6PI',
     ),
