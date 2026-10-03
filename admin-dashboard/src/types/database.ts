@@ -83,6 +83,7 @@ export interface FileItem {
   uploaded_by: string | null
   file_size_bytes: number | null
   file_type: string
+  sort_order: number
   uploaded_at: string
   updated_at: string
   is_deleted: boolean

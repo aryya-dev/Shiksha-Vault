@@ -149,10 +149,10 @@ export const ContentPage: React.FC = () => {
     return matchesBatch && matchesSubject && matchesParent && !f.is_deleted
   }).sort((a, b) => a.sort_order - b.sort_order)
 
-  // Filter files in the currently opened folder
-  const currentFiles = files.filter(
-    (f) => f.folder_id === currentFolderId && !f.is_deleted
-  )
+  // Filter files in the currently opened folder, sorted by admin-set sort_order
+  const currentFiles = files
+    .filter((f) => f.folder_id === currentFolderId && !f.is_deleted)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
   const activeFolder = folders.find((f) => f.id === currentFolderId)
   const parentOfActiveFolder = activeFolder?.parent_folder_id 
@@ -342,6 +342,38 @@ export const ContentPage: React.FC = () => {
     }
   }
 
+  const handleReorderFile = async (fileId: string, direction: 'up' | 'down') => {
+    const index = currentFiles.findIndex((f) => f.id === fileId)
+    if (index === -1) return
+    if (direction === 'up' && index === 0) return
+    if (direction === 'down' && index === currentFiles.length - 1) return
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    const reordered = [...currentFiles]
+    const temp = reordered[index]
+    reordered[index] = reordered[targetIndex]
+    reordered[targetIndex] = temp
+
+    // Optimistically update local state
+    const updated = files.map((f) => {
+      const matchIndex = reordered.findIndex((r) => r.id === f.id)
+      if (matchIndex !== -1) return { ...f, sort_order: matchIndex + 1 }
+      return f
+    })
+    setFiles(updated)
+
+    // Persist to DB
+    try {
+      await Promise.all(
+        reordered.map((f, idx) =>
+          supabase.from('files').update({ sort_order: idx + 1 }).eq('id', f.id)
+        )
+      )
+    } catch (err) {
+      console.error('Failed to save file order:', err)
+    }
+  }
+
   const handleReorderFolder = (folderId: string, direction: 'up' | 'down') => {
     const index = currentFolders.findIndex((f) => f.id === folderId)
     if (index === -1) return
@@ -458,6 +490,7 @@ export const ContentPage: React.FC = () => {
               version: 1,
               file_size_bytes: file.size,
               file_type: fileType,
+              sort_order: currentFiles.length + i + 1,
               is_deleted: false
             })
             .select()
@@ -1140,12 +1173,13 @@ export const ContentPage: React.FC = () => {
                   <table className="table-container">
                     <thead>
                       <tr>
-                        <th style={{ width: '40%' }}>Material Name</th>
-                        <th style={{ width: '15%' }}>Format</th>
-                        <th style={{ width: '10%' }}>Version</th>
-                        <th style={{ width: '15%' }}>File Size</th>
-                        <th style={{ width: '10%' }}>Uploaded</th>
-                        <th style={{ width: '10%', textAlign: 'right' }}>Actions</th>
+                        <th style={{ width: '5%', textAlign: 'center' }}>Order</th>
+                        <th style={{ width: '37%' }}>Material Name</th>
+                        <th style={{ width: '14%' }}>Format</th>
+                        <th style={{ width: '9%' }}>Version</th>
+                        <th style={{ width: '12%' }}>File Size</th>
+                        <th style={{ width: '9%' }}>Uploaded</th>
+                        <th style={{ width: '14%', textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1153,6 +1187,28 @@ export const ContentPage: React.FC = () => {
                         const badgeInfo = getFileBadge(file)
                         return (
                           <tr key={file.id}>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '2px' }}>
+                                <button
+                                  className="btn-secondary"
+                                  style={{ padding: '2px 4px' }}
+                                  title="Move Up"
+                                  onClick={() => handleReorderFile(file.id, 'up')}
+                                  disabled={currentFiles.indexOf(file) === 0}
+                                >
+                                  <ArrowUp size={12} />
+                                </button>
+                                <button
+                                  className="btn-secondary"
+                                  style={{ padding: '2px 4px' }}
+                                  title="Move Down"
+                                  onClick={() => handleReorderFile(file.id, 'down')}
+                                  disabled={currentFiles.indexOf(file) === currentFiles.length - 1}
+                                >
+                                  <ArrowDown size={12} />
+                                </button>
+                              </div>
+                            </td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 {badgeInfo.icon}
@@ -1367,6 +1423,7 @@ export const ContentPage: React.FC = () => {
           currentFolderId={currentFolderId}
           folderName={activeFolder?.name || ''}
           targetFileToReplace={driveFileToReplace}
+          nextSortOrder={currentFiles.length + 1}
           onFileAdded={(newFile) => setFiles((prev) => [...prev, newFile])}
           onFileUpdated={(updatedFile) =>
             setFiles((prev) => prev.map((f) => (f.id === updatedFile.id ? updatedFile : f)))

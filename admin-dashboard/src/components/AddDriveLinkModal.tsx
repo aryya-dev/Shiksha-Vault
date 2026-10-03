@@ -10,6 +10,7 @@ interface AddDriveLinkModalProps {
   currentFolderId: string
   folderName: string
   targetFileToReplace?: FileItem | null
+  nextSortOrder?: number
   onFileAdded: (newFile: FileItem) => void
   onFileUpdated?: (updatedFile: FileItem) => void
 }
@@ -20,6 +21,7 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
   currentFolderId,
   folderName,
   targetFileToReplace,
+  nextSortOrder = 1,
   onFileAdded,
   onFileUpdated
 }) => {
@@ -160,6 +162,7 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
               version: 1,
               file_size_bytes: sizeBytes,
               file_type: fileType,
+              sort_order: nextSortOrder,
               is_deleted: false
             })
             .select()

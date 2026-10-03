@@ -158,14 +158,14 @@ class SupabaseService {
     }
   }
 
-  /// Fetch non-deleted files for a folder (enforced via RLS)
+  /// Fetch non-deleted files for a folder (enforced via RLS), in admin-set order
   static Future<List<FileItemModel>> getFiles(String folderId) async {
     final response = await client
         .from('files')
         .select()
         .eq('folder_id', folderId)
         .eq('is_deleted', false)
-        .order('name', ascending: true);
+        .order('sort_order', ascending: true);
 
     return (response as List).map((e) => FileItemModel.fromJson(e)).toList();
   }
