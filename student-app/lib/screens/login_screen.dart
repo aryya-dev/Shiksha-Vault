@@ -243,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'e.g. SH2026-101',
+                      hintText: 'e.g. AARIM_I9E_2026',
                       hintStyle: const TextStyle(color: AppColors.textMuted),
                       prefixIcon: const Icon(Icons.badge_outlined, color: AppColors.textMuted, size: 20),
                       filled: true,

@@ -13,11 +13,14 @@ import {
   Users,
   Copy,
   CheckCheck,
-  Pencil
+  Pencil,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react'
 import Papa from 'papaparse'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatUserError } from '../lib/errorHandler'
+import { generateStudentCode } from '../lib/studentIdGenerator'
 import type { Student, Batch, Subject } from '../types/database'
 
 export const StudentsPage: React.FC = () => {
@@ -71,6 +74,8 @@ export const StudentsPage: React.FC = () => {
   const [formClass, setFormClass] = useState('9')
   const [formBoard, setFormBoard] = useState('ICSE')
   const [formBatchId, setFormBatchId] = useState('')
+  const [formYear, setFormYear] = useState('2026')
+  const [isAutoCode, setIsAutoCode] = useState(true)
   const [formIsFoundation, setFormIsFoundation] = useState(false)
   const [formSubjectIds, setFormSubjectIds] = useState<string[]>([])
 
@@ -81,10 +86,16 @@ export const StudentsPage: React.FC = () => {
   const [editClass, setEditClass] = useState('9')
   const [editBoard, setEditBoard] = useState('ICSE')
   const [editBatchId, setEditBatchId] = useState('')
+  const [editYear, setEditYear] = useState('2026')
   const [editIsFoundation, setEditIsFoundation] = useState(false)
   const [editSubjectIds, setEditSubjectIds] = useState<string[]>([])
   const [editIsActive, setEditIsActive] = useState(true)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
+
+  // Batch Migrate Modal State
+  const [isMigrateModalOpen, setIsMigrateModalOpen] = useState(false)
+  const [migrateYear, setMigrateYear] = useState('2026')
+  const [isMigrating, setIsMigrating] = useState(false)
 
   const fetchStudents = async () => {
     if (!isSupabaseConfigured()) {
@@ -320,6 +331,8 @@ export const StudentsPage: React.FC = () => {
     setFormCode('')
     setFormName('')
     setFormBatchId('')
+    setFormYear('2026')
+    setIsAutoCode(true)
     setFormIsFoundation(false)
     setFormSubjectIds([])
     setIsAddModalOpen(false)
@@ -332,6 +345,7 @@ export const StudentsPage: React.FC = () => {
     setEditClass(st.class_name || st.batches?.class_name || '9')
     setEditBoard(st.board || st.batches?.board || 'ICSE')
     setEditBatchId(st.batch_id || '')
+    setEditYear('2026')
     const hasFoundation = Boolean(
       st.student_batches?.some(
         (sb) =>
@@ -352,10 +366,11 @@ export const StudentsPage: React.FC = () => {
     setIsSavingEdit(true)
     try {
       if (isSupabaseConfigured()) {
-        // 1. Update students table
+        // 1. Update students table (student_code update automatically triggers Supabase Auth email sync)
         const { error: stErr } = await supabase
           .from('students')
           .update({
+            student_code: editCode.trim().toUpperCase(),
             full_name: editName.trim(),
             class_name: editClass.trim(),
             board: editBoard.trim(),
@@ -393,6 +408,7 @@ export const StudentsPage: React.FC = () => {
             s.id === editModalStudent.id
               ? {
                   ...s,
+                  student_code: editCode.trim().toUpperCase(),
                   full_name: editName.trim(),
                   class_name: editClass.trim(),
                   board: editBoard.trim(),
@@ -412,6 +428,62 @@ export const StudentsPage: React.FC = () => {
       alert(formatUserError(err, 'Failed to update student details'))
     } finally {
       setIsSavingEdit(false)
+    }
+  }
+
+  const handleMigrateAllStudentCodes = async () => {
+    if (!students || students.length === 0) {
+      alert('No students found to migrate.')
+      return
+    }
+
+    if (!confirm(`Are you sure you want to update all ${students.length} student IDs to the standard format (e.g. AARIM_I9E_${migrateYear})?`)) {
+      return
+    }
+
+    setIsMigrating(true)
+    try {
+      if (isSupabaseConfigured()) {
+        const { error: rpcErr } = await supabase.rpc('admin_migrate_all_student_codes', {
+          p_year: migrateYear.trim() || '2026'
+        })
+
+        if (rpcErr) {
+          console.warn('RPC admin_migrate_all_student_codes failed, falling back to direct table update:', rpcErr)
+          for (const s of students) {
+            const batchName = s.batches?.name || ''
+            const newCode = generateStudentCode({
+              fullName: s.full_name,
+              className: s.class_name || s.batches?.class_name || '9',
+              board: s.board || s.batches?.board || 'ICSE',
+              batchName,
+              year: migrateYear
+            })
+            await supabase.from('students').update({ student_code: newCode, updated_at: new Date().toISOString() }).eq('id', s.id)
+          }
+        }
+        await fetchStudents()
+        alert(`Successfully migrated ${students.length} student IDs to standard format for year ${migrateYear}.`)
+      } else {
+        const updated = students.map((s) => {
+          const batchName = s.batches?.name || ''
+          const newCode = generateStudentCode({
+            fullName: s.full_name,
+            className: s.class_name || s.batches?.class_name || '9',
+            board: s.board || s.batches?.board || 'ICSE',
+            batchName,
+            year: migrateYear
+          })
+          return { ...s, student_code: newCode }
+        })
+        setStudents(updated)
+        alert(`Successfully updated ${students.length} student IDs locally.`)
+      }
+      setIsMigrateModalOpen(false)
+    } catch (err: any) {
+      alert(formatUserError(err, 'Failed to migrate student IDs'))
+    } finally {
+      setIsMigrating(false)
     }
   }
 
@@ -447,20 +519,12 @@ export const StudentsPage: React.FC = () => {
 
   const handleDownloadTemplate = () => {
     const templateContent = `Student Code,Name,Class,Board,Batch,Subjects
-SHK-PUB-0001,Sweta Sharma,10,ICSE,10 ICSE B,"Physics, Mathematics, Chemistry"
-SHK-PUB-0002,Akash Mondal,9,ICSE,9 ICSE E,"Physics, Chemistry, Mathematics, Biology, Computer Science"
-SHK-PUB-0003,Adhi Yadav,9,ICSE,9 ICSE E,"Physics, Chemistry, Biology, Computer Science"
-SHK-PUB-0004,Avideepta Daphadar,9,ICSE,9 ICSE C,"Physics, Mathematics, Chemistry, Biology, Computer Science"
-SHK-PUB-0005,Arhan Pani,9,ICSE,9 ICSE C,"Mathematics, Physics, Chemistry, Biology"
-SHK-PUB-0006,Ayush Sikder,9,ICSE,9 ICSE C,"Physics, Mathematics, Computer Science, Chemistry, Biology"
-SHK-PUB-0007,Anish Bala,9,ICSE,9 ICSE C,Computer Science
-SHK-PUB-0008,Ayush Mondal,9,ICSE,9 ICSE C,"Physics, Chemistry, Mathematics, Biology, Computer Science"
-SHK-PUB-0009,Aryan Choudhury,9,ICSE,9 ICSE D,"Physics, Chemistry, Biology"
-SHK-PUB-0010,Abhraneel Bagui,9,CBSE,9 CBSE A,Physics
-SHK-PUB-0011,Arish Mondal,9,ICSE,9 ICSE C,"Physics, Mathematics, Chemistry, Biology"
-SHK-PUB-0012,Anushka Das Mahapatra,9,CBSE,9 CBSE A,"Physics, Mathematics, Chemistry, Biology"
-SHK-PUB-0014,Abhinaba Garai,9,ICSE,9 ICSE E,"Physics, Mathematics, Chemistry, Biology, Computer Science"
-SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Science, Chemistry, Biology"`
+AARIM_I9E_2026,Aariz Molla,9,ICSE,9 ICSE E,"Physics, Chemistry, Mathematics, Biology, Computer Science"
+SWETS_I10B_2026,Sweta Sharma,10,ICSE,10 ICSE B,"Physics, Mathematics, Chemistry"
+AKASM_I9E_2026,Akash Mondal,9,ICSE,9 ICSE E,"Physics, Chemistry, Mathematics, Biology, Computer Science"
+ADHIY_I9E_2026,Adhi Yadav,9,ICSE,9 ICSE E,"Physics, Chemistry, Biology, Computer Science"
+AVIDD_I9C_2026,Avideepta Daphadar,9,ICSE,9 ICSE C,"Physics, Mathematics, Chemistry, Biology, Computer Science"
+ABHRB_C9A_2026,Abhraneel Bagui,9,CBSE,9 CBSE A,Physics`
 
     const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -508,14 +572,15 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
 
       for (let idx = 0; idx < csvData.length; idx++) {
         const row = csvData[idx]
-        const studentCode = (
-          getCsvValue(row, ['Student Code', 'student_code', 'code', 'roll_no', 'roll']) ||
-          `SHK-PUB-${String(idx + 1).padStart(4, '0')}`
-        ).toUpperCase()
         const fullName = getCsvValue(row, ['Name', 'full_name', 'student_name']) || 'Enrolled Student'
-        const className = getCsvValue(row, ['Class', 'class_name', 'grade', 'standard']) || '10'
+        const className = getCsvValue(row, ['Class', 'class_name', 'grade', 'standard']) || '9'
         const board = getCsvValue(row, ['Board', 'board_name']) || 'ICSE'
         const batchName = getCsvValue(row, ['Batch', 'batch_name', 'section']) || `${className} ${board} A`
+
+        const rawCode = getCsvValue(row, ['Student Code', 'student_code', 'code', 'roll_no', 'roll'])?.trim().toUpperCase()
+        const studentCode = (!rawCode || rawCode.startsWith('SHK-') || rawCode.startsWith('AUTO-'))
+          ? generateStudentCode({ fullName, className, board, batchName, year: '2026' })
+          : rawCode
 
         // Match existing batch
         let matchedBatch = batches.find(
@@ -628,6 +693,15 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
         subtitle="Manage student credentials, board alignments (ICSE/CBSE), batches, and individual subject enrollments"
         actions={
           <>
+            <button
+              className="btn-secondary"
+              onClick={() => setIsMigrateModalOpen(true)}
+              title="Migrate all student IDs to standard format (e.g. AARIM_I9E_2026)"
+              style={{ borderColor: 'rgba(255, 179, 0, 0.4)', color: 'var(--accent-primary)' }}
+            >
+              <Sparkles size={16} />
+              Migrate IDs
+            </button>
             <button className="btn-secondary" onClick={handleDownloadTemplate} title="Download standard CSV template">
               <Download size={16} />
               Download Template
@@ -952,47 +1026,61 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
           <div className="card" style={{ width: '520px', backgroundColor: 'var(--surface-raised)' }}>
             <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>Add New Student</h3>
             <form onSubmit={handleAddStudent} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                    Student Code (Login ID)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. SHK-PUB-0016"
-                    className="input-field"
-                    value={formCode}
-                    onChange={(e) => setFormCode(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                    Full Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Priyanshu Mukherjee"
-                    className="input-field"
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    required
-                  />
-                </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Aariz Molla"
+                  className="input-field"
+                  value={formName}
+                  onChange={(e) => {
+                    const newName = e.target.value
+                    setFormName(newName)
+                    if (isAutoCode) {
+                      const selBatch = batches.find((b) => b.id === formBatchId)
+                      setFormCode(
+                        generateStudentCode({
+                          fullName: newName,
+                          className: formClass,
+                          board: formBoard,
+                          batchName: selBatch?.name || '',
+                          year: formYear
+                        })
+                      )
+                    }
+                  }}
+                  required
+                />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                     Class
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. 10 or 9"
+                    placeholder="e.g. 9 or 10"
                     className="input-field"
                     value={formClass}
-                    onChange={(e) => setFormClass(e.target.value)}
+                    onChange={(e) => {
+                      const newClass = e.target.value
+                      setFormClass(newClass)
+                      if (isAutoCode && formName.trim()) {
+                        const selBatch = batches.find((b) => b.id === formBatchId)
+                        setFormCode(
+                          generateStudentCode({
+                            fullName: formName,
+                            className: newClass,
+                            board: formBoard,
+                            batchName: selBatch?.name || '',
+                            year: formYear
+                          })
+                        )
+                      }
+                    }}
                     required
                   />
                 </div>
@@ -1004,12 +1092,56 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                   <select
                     className="input-field"
                     value={formBoard}
-                    onChange={(e) => setFormBoard(e.target.value)}
+                    onChange={(e) => {
+                      const newBoard = e.target.value
+                      setFormBoard(newBoard)
+                      if (isAutoCode && formName.trim()) {
+                        const selBatch = batches.find((b) => b.id === formBatchId)
+                        setFormCode(
+                          generateStudentCode({
+                            fullName: formName,
+                            className: formClass,
+                            board: newBoard,
+                            batchName: selBatch?.name || '',
+                            year: formYear
+                          })
+                        )
+                      }
+                    }}
                   >
                     <option value="ICSE">ICSE</option>
                     <option value="CBSE">CBSE</option>
                     <option value="WBBSE">WBBSE</option>
                   </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    Academic Year
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="2026"
+                    className="input-field"
+                    value={formYear}
+                    onChange={(e) => {
+                      const newYear = e.target.value
+                      setFormYear(newYear)
+                      if (isAutoCode && formName.trim()) {
+                        const selBatch = batches.find((b) => b.id === formBatchId)
+                        setFormCode(
+                          generateStudentCode({
+                            fullName: formName,
+                            className: formClass,
+                            board: formBoard,
+                            batchName: selBatch?.name || '',
+                            year: newYear
+                          })
+                        )
+                      }
+                    }}
+                    required
+                  />
                 </div>
               </div>
 
@@ -1020,7 +1152,22 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                 <select
                   className="input-field"
                   value={formBatchId}
-                  onChange={(e) => setFormBatchId(e.target.value)}
+                  onChange={(e) => {
+                    const newBatchId = e.target.value
+                    setFormBatchId(newBatchId)
+                    if (isAutoCode && formName.trim()) {
+                      const selBatch = batches.find((b) => b.id === newBatchId)
+                      setFormCode(
+                        generateStudentCode({
+                          fullName: formName,
+                          className: formClass,
+                          board: formBoard,
+                          batchName: selBatch?.name || '',
+                          year: formYear
+                        })
+                      )
+                    }
+                  }}
                   required
                 >
                   <option value="">Select a batch...</option>
@@ -1030,6 +1177,59 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    Student Code (Login ID)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAutoCode(true)
+                      const selBatch = batches.find((b) => b.id === formBatchId)
+                      setFormCode(
+                        generateStudentCode({
+                          fullName: formName || 'STUDENT',
+                          className: formClass,
+                          board: formBoard,
+                          batchName: selBatch?.name || '',
+                          year: formYear
+                        })
+                      )
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--accent-primary)',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: 0
+                    }}
+                  >
+                    <RefreshCw size={12} />
+                    Auto-generate
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. AARIM_I9E_2026"
+                  className="input-field"
+                  style={{ fontFamily: 'monospace', fontWeight: 600, letterSpacing: '0.5px' }}
+                  value={formCode}
+                  onChange={(e) => {
+                    setIsAutoCode(false)
+                    setFormCode(e.target.value.toUpperCase())
+                  }}
+                  required
+                />
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Format: [4 letters name][1 letter surname]_[Board][Class][Batch]_[Year] (e.g. <strong style={{ color: 'var(--accent-primary)' }}>AARIM_I9E_2026</strong>)
+                </div>
               </div>
 
               {/* Secondary Batch Option: Foundation Batch */}
@@ -1163,16 +1363,51 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
             <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                    Student Code (Login ID)
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      Student Code (Login ID)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const selBatch = batches.find((b) => b.id === editBatchId)
+                        const standardCode = generateStudentCode({
+                          fullName: editName,
+                          className: editClass,
+                          board: editBoard,
+                          batchName: selBatch?.name || '',
+                          year: editYear
+                        })
+                        setEditCode(standardCode)
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--accent-primary)',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: 0
+                      }}
+                      title="Generate standard format code"
+                    >
+                      <RefreshCw size={12} />
+                      Standard ID
+                    </button>
+                  </div>
                   <input
                     type="text"
                     className="input-field"
+                    style={{ fontFamily: 'monospace', fontWeight: 600, letterSpacing: '0.5px' }}
                     value={editCode}
-                    disabled
-                    style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                    onChange={(e) => setEditCode(e.target.value.toUpperCase())}
+                    required
                   />
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Standard format: <strong style={{ color: 'var(--accent-primary)' }}>AARIM_I9E_2026</strong>
+                  </div>
                 </div>
 
                 <div>
@@ -1189,7 +1424,7 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                     Class
@@ -1217,6 +1452,19 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                     <option value="WBBSE">WBBSE</option>
                     <option value="Foundation">Foundation</option>
                   </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    Year
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={editYear}
+                    onChange={(e) => setEditYear(e.target.value)}
+                    required
+                  />
                 </div>
               </div>
 
@@ -1644,6 +1892,129 @@ SHK-PUB-0015,Aahan Chandak,9,CBSE,9 CBSE A,"Physics, Mathematics, Computer Scien
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Batch Migrate Modal */}
+      {isMigrateModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div className="card" style={{ width: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--surface-raised)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(255, 179, 0, 0.15)', color: 'var(--accent-primary)' }}>
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 600 }}>Standardize All Student IDs</h3>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Convert student IDs to format: <strong style={{ color: 'var(--accent-primary)' }}>AARIM_I9E_2026</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', backgroundColor: 'var(--surface-card)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '2px' }}>Specification Rule:</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  [4 letters of name + 1 letter surname] _ [I(ICSE)/C(CBSE) + Class + Batch] _ [Year]
+                </div>
+              </div>
+              <div style={{ width: '120px' }}>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Target Year
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  style={{ padding: '6px 10px', fontSize: '13px' }}
+                  value={migrateYear}
+                  onChange={(e) => setMigrateYear(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div style={{ flex: 1, maxHeight: '360px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '16px' }}>
+              <table className="table-container" style={{ fontSize: '12px' }}>
+                <thead>
+                  <tr>
+                    <th>Student Name</th>
+                    <th>Batch</th>
+                    <th>Current ID</th>
+                    <th style={{ textAlign: 'center' }}>→</th>
+                    <th>New Standard ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((st) => {
+                    const batchName = st.batches?.name || ''
+                    const newCode = generateStudentCode({
+                      fullName: st.full_name,
+                      className: st.class_name || st.batches?.class_name || '9',
+                      board: st.board || st.batches?.board || 'ICSE',
+                      batchName,
+                      year: migrateYear
+                    })
+                    const isChanged = st.student_code !== newCode
+
+                    return (
+                      <tr key={st.id}>
+                        <td style={{ fontWeight: 500 }}>{st.full_name}</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{batchName || '—'}</td>
+                        <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{st.student_code}</td>
+                        <td style={{ textAlign: 'center', color: isChanged ? 'var(--accent-primary)' : 'var(--text-muted)' }}>→</td>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 600, color: isChanged ? 'var(--success)' : 'var(--text-primary)' }}>
+                          {newCode}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {students.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                        No students enrolled yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Total: <strong>{students.length}</strong> students. Supabase auth logins will be synced automatically.
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setIsMigrateModalOpen(false)}
+                  disabled={isMigrating}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleMigrateAllStudentCodes}
+                  disabled={isMigrating || students.length === 0}
+                >
+                  <Sparkles size={14} />
+                  {isMigrating ? 'Migrating IDs...' : `Apply to All ${students.length} Students`}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
