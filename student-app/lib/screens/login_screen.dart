@@ -18,6 +18,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   bool _mustChangePassword = false;
+  bool _obscurePassword = true;
+  bool _obscureNewPassword = true;
 
   Future<void> _handleLogin() async {
     final code = _codeController.text.trim().toUpperCase();
@@ -76,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (errLower.contains('invalid login credentials') ||
           errLower.contains('invalid_credentials')) {
-        friendly = 'Incorrect Student Code or Password. Please verify and try again.';
+        friendly = 'Incorrect Student ID or Password. Please verify and try again.';
       } else if (errLower.contains('network') ||
           errLower.contains('socket') ||
           errLower.contains('failed host lookup') ||
@@ -228,9 +230,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
 
                 if (!_mustChangePassword) ...[
-                  // Student Code Input
+                  // Student ID Input
                   const Text(
-                    'Student ID / Code',
+                    'Student ID',
                     style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 6),
@@ -243,8 +245,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'e.g. AARIM_I9E_2026',
-                      hintStyle: const TextStyle(color: AppColors.textMuted),
                       prefixIcon: const Icon(Icons.badge_outlined, color: AppColors.textMuted, size: 20),
                       filled: true,
                       fillColor: AppColors.surfaceCard,
@@ -272,12 +272,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 6),
                   TextField(
                     controller: _passwordController,
-                    obscureText: true,
+                    obscureText: _obscurePassword,
                     style: const TextStyle(color: AppColors.textPrimary),
                     decoration: InputDecoration(
-                      hintText: '••••••••••••',
-                      hintStyle: const TextStyle(color: AppColors.textMuted),
                       prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textMuted, size: 20),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                          color: AppColors.textMuted,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
                       filled: true,
                       fillColor: AppColors.surfaceCard,
                       border: OutlineInputBorder(
@@ -328,12 +338,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 6),
                   TextField(
                     controller: _newPasswordController,
-                    obscureText: true,
+                    obscureText: _obscureNewPassword,
                     style: const TextStyle(color: AppColors.textPrimary),
                     decoration: InputDecoration(
-                      hintText: 'Minimum 6 characters',
-                      hintStyle: const TextStyle(color: AppColors.textMuted),
                       prefixIcon: const Icon(Icons.lock_reset_rounded, color: AppColors.accentPrimary, size: 20),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureNewPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                          color: AppColors.textMuted,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureNewPassword = !_obscureNewPassword;
+                          });
+                        },
+                      ),
                       filled: true,
                       fillColor: AppColors.surfaceCard,
                       border: OutlineInputBorder(
