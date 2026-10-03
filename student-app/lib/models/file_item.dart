@@ -8,6 +8,7 @@ class FileItemModel {
   final int version;
   final int? fileSizeBytes;
   final String fileType;
+  final int sortOrder;
   final DateTime uploadedAt;
   final bool isDeleted;
 
@@ -21,6 +22,7 @@ class FileItemModel {
     required this.version,
     this.fileSizeBytes,
     this.fileType = 'application/pdf',
+    this.sortOrder = 0,
     required this.uploadedAt,
     this.isDeleted = false,
   });
@@ -41,6 +43,7 @@ class FileItemModel {
       version: (json['version'] as num?)?.toInt() ?? 1,
       fileSizeBytes: (json['file_size_bytes'] as num?)?.toInt(),
       fileType: json['file_type'] as String? ?? 'application/pdf',
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
       uploadedAt: json['uploaded_at'] != null 
           ? DateTime.parse(json['uploaded_at'] as String) 
           : DateTime.now(),

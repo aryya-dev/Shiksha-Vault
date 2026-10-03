@@ -167,7 +167,10 @@ class SupabaseService {
         .eq('is_deleted', false)
         .order('sort_order', ascending: true);
 
-    return (response as List).map((e) => FileItemModel.fromJson(e)).toList();
+    final files = (response as List).map((e) => FileItemModel.fromJson(e)).toList();
+    // Client-side safety sort in case DB returns rows out of order
+    files.sort((a, b) => (a.sortOrder).compareTo(b.sortOrder));
+    return files;
   }
 
   /// Request short-lived streaming URL for private media/video (Supabase Storage or Google Drive Edge stream)
