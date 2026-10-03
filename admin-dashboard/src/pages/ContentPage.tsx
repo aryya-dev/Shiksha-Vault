@@ -510,6 +510,7 @@ export const ContentPage: React.FC = () => {
             uploaded_by: null,
             file_size_bytes: file.size,
             file_type: fileType,
+            sort_order: currentFiles.length + i + 1,
             uploaded_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             is_deleted: false

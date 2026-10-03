@@ -182,6 +182,7 @@ export const AddDriveLinkModal: React.FC<AddDriveLinkModalProps> = ({
             uploaded_by: null,
             file_size_bytes: sizeBytes,
             file_type: fileType,
+            sort_order: nextSortOrder,
             uploaded_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             is_deleted: false
